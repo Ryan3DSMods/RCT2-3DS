@@ -38,7 +38,7 @@
 #include "String.hpp"
 #include "UTF8.h"
 
-#if defined(__unix__) || defined(__HAIKU__) || (defined(__APPLE__) && defined(__MACH__))
+#if defined(__unix__) || defined(__HAIKU__) || defined(__3DS__) || (defined(__APPLE__) && defined(__MACH__))
     #define _stricmp(x, y) strcasecmp((x), (y))
 #endif
 
