@@ -17,7 +17,13 @@ constexpr int32_t kCoordsZStep = 8;
 constexpr int32_t kCoordsZPerTinyZ = 16;
 
 constexpr uint8_t kMinimumMapSizeTechnical = 5;
+#ifdef __3DS__
+// The console cannot afford the per-tile tables of a 999x999 map (tile elements, tile
+// index, entity spatial index, animation flags: ~33 MiB). RCT2's own maximum is 256x256.
+constexpr uint16_t kMaximumMapSizeTechnical = 302;
+#else
 constexpr uint16_t kMaximumMapSizeTechnical = 1001;
+#endif
 constexpr int16_t kMinimumMapSizePractical = (kMinimumMapSizeTechnical - 2);
 constexpr int16_t kMaximumMapSizePractical = (kMaximumMapSizeTechnical - 2);
 constexpr int32_t kMaximumMapSizeBig = kCoordsXYStep * kMaximumMapSizeTechnical;

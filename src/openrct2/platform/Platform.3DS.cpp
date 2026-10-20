@@ -36,6 +36,7 @@
     #include <unistd.h>
     #include <cstring>
     #include <ctime>
+    #include <sys/iosupport.h>
     #include <sys/stat.h>
     #include <sys/time.h>
 
@@ -186,9 +187,34 @@ namespace OpenRCT2::Platform
         mkdir(kUserRoot, 0777);
     }
 
+    // Everything printed to the top-screen console is also appended to a log file on the SD
+    // card, so a run can be reported without photographing the screen.
+    static const devoptab_t* _consoleDevoptab = nullptr;
+    static devoptab_t _teeDevoptab;
+    static FILE* _logFile = nullptr;
+
+    static ssize_t TeeWrite(struct _reent* r, void* fd, const char* ptr, size_t len)
+    {
+        if (_logFile != nullptr)
+        {
+            std::fwrite(ptr, 1, len, _logFile);
+            std::fflush(_logFile);
+        }
+        return _consoleDevoptab->write_r(r, fd, ptr, len);
+    }
+
     void N3DSConsoleInit()
     {
         consoleInit(GFX_TOP, nullptr);
+        _logFile = std::fopen("sdmc:/3ds/openrct2/openrct2.log", "w");
+        _consoleDevoptab = devoptab_list[STD_OUT];
+        _teeDevoptab = *_consoleDevoptab;
+        _teeDevoptab.name = "tee";
+        _teeDevoptab.write_r = TeeWrite;
+        devoptab_list[STD_OUT] = &_teeDevoptab;
+        devoptab_list[STD_ERR] = &_teeDevoptab;
+        std::setvbuf(stdout, nullptr, _IONBF, 0);
+        std::setvbuf(stderr, nullptr, _IONBF, 0);
         bool isNew3DS = false;
         APT_CheckNew3DS(&isNew3DS);
         std::printf(
