@@ -39,9 +39,52 @@
 extern "C" {
 // Main thread stack: OpenRCT2 keeps sizeable buffers on the stack (paint, formatting, bidi).
 u32 __stacksize__ = 2 * 1024 * 1024;
-// Linear (GPU-visible) heap: only the screen framebuffers and audio buffers live here,
-// so shrink it from libctru's 32 MiB default and leave the rest to the main heap.
-u32 __ctru_linear_heap_size = 8 * 1024 * 1024;
+// Heap layout. libctru's default split (app heap capped at 24 MiB, linear heap at 32 MiB,
+// the rest to the app heap) is replaced so that malloc gets as much as possible: the app
+// heap region is limited to 96 MiB by the kernel's address space layout, so everything
+// up to that goes to the app heap and only the remainder (framebuffers, audio buffers)
+// to the GPU-visible linear heap.
+extern u32 __ctru_heap;
+extern u32 __ctru_linear_heap;
+extern u32 __ctru_heap_size;
+extern u32 __ctru_linear_heap_size;
+extern char* fake_heap_start;
+extern char* fake_heap_end;
+
+void __system_allocateHeaps(void)
+{
+    Handle reslimit = 0;
+    if (R_FAILED(svcGetResourceLimit(&reslimit, CUR_PROCESS_HANDLE)))
+        svcBreak(USERBREAK_PANIC);
+
+    s64 maxCommit = 0, currentCommit = 0;
+    ResourceLimitType reslimitType = RESLIMIT_COMMIT;
+    svcGetResourceLimitLimitValues(&maxCommit, reslimit, &reslimitType, 1);
+    svcGetResourceLimitCurrentValues(&currentCommit, reslimit, &reslimitType, 1);
+    svcCloseHandle(reslimit);
+
+    const u32 remaining = static_cast<u32>(maxCommit - currentCommit) & ~0xFFFu;
+    const u32 heapRegion = OS_HEAP_AREA_END - OS_HEAP_AREA_BEGIN; // 96 MiB
+    const u32 linearMinimum = 6 * 1024 * 1024;
+
+    u32 heapSize = remaining > linearMinimum ? remaining - linearMinimum : 0;
+    if (heapSize > heapRegion)
+        heapSize = heapRegion;
+    u32 linearSize = remaining - heapSize;
+
+    __ctru_heap_size = heapSize;
+    __ctru_linear_heap_size = linearSize;
+
+    if (R_FAILED(svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, heapSize, MEMOP_ALLOC, static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE))))
+        svcBreak(USERBREAK_PANIC);
+    if (R_FAILED(svcControlMemory(&__ctru_linear_heap, 0x0, 0x0, linearSize, MEMOP_ALLOC_LINEAR, static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE))))
+        svcBreak(USERBREAK_PANIC);
+
+    mappableInit(OS_MAP_AREA_BEGIN, OS_MAP_AREA_END);
+
+    fake_heap_start = reinterpret_cast<char*>(__ctru_heap);
+    fake_heap_end = fake_heap_start + heapSize;
+}
 
 // libctru gives threads created without attributes (std::thread) a 32 KiB stack, which
 // OpenRCT2's worker threads (object scanning, JSON parsing) overflow. The executable is
@@ -90,8 +133,10 @@ namespace OpenRCT2::Platform
         bool isNew3DS = false;
         APT_CheckNew3DS(&isNew3DS);
         std::printf(
-            "OpenRCT2 for Nintendo 3DS (%s)\nApplication memory: %lu KiB free of %lu KiB\n",
-            isNew3DS ? "New 3DS" : "Old 3DS", static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION) / 1024),
+            "OpenRCT2 for Nintendo 3DS (%s)\nheap %lu KiB, linear heap %lu KiB, app region free %lu of %lu KiB\n",
+            isNew3DS ? "New 3DS" : "Old 3DS", static_cast<unsigned long>(__ctru_heap_size / 1024),
+            static_cast<unsigned long>(__ctru_linear_heap_size / 1024),
+            static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION) / 1024),
             static_cast<unsigned long>(osGetMemRegionSize(MEMREGION_APPLICATION) / 1024));
     }
 
