@@ -394,7 +394,11 @@ else ()
             -U__INT_LEAST32_TYPE__ -D__INT_LEAST32_TYPE__=int
             -U__UINT_LEAST32_TYPE__ "-D__UINT_LEAST32_TYPE__=unsigned int"
             -U__INT32_C "-D__INT32_C(c)=c"
-            -U__UINT32_C "-D__UINT32_C(c)=c ## U")
+            -U__UINT32_C "-D__UINT32_C(c)=c ## U"
+            -U__INT32_MAX__ -D__INT32_MAX__=0x7fffffff
+            -U__UINT32_MAX__ -D__UINT32_MAX__=0xffffffffU
+            -U__INT_LEAST32_MAX__ -D__INT_LEAST32_MAX__=0x7fffffff
+            -U__UINT_LEAST32_MAX__ -D__UINT_LEAST32_MAX__=0xffffffffU)
         add_compile_options(${OPENRCT2_3DS_INT32_FLAGS})
         # nlohmann/json's std::filesystem::path conversions need char8_t, which is disabled above.
         add_compile_definitions(JSON_HAS_FILESYSTEM=0 JSON_HAS_EXPERIMENTAL_FILESYSTEM=0)

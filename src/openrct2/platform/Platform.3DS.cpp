@@ -68,7 +68,12 @@ namespace OpenRCT2::Platform
     void N3DSConsoleInit()
     {
         consoleInit(GFX_TOP, nullptr);
-        std::printf("OpenRCT2 for Nintendo 3DS\n");
+        bool isNew3DS = false;
+        APT_CheckNew3DS(&isNew3DS);
+        std::printf(
+            "OpenRCT2 for Nintendo 3DS (%s)\nApplication memory: %lu KiB free of %lu KiB\n",
+            isNew3DS ? "New 3DS" : "Old 3DS", static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION) / 1024),
+            static_cast<unsigned long>(osGetMemRegionSize(MEMREGION_APPLICATION) / 1024));
     }
 
     void N3DSPlatformExit()
