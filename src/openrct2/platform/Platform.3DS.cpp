@@ -27,6 +27,7 @@
     #include "Platform.h"
 
     #include <3ds.h>
+    #include <pthread.h>
     #include <cstdio>
     #include <cstdlib>
     #include <cstring>
@@ -41,6 +42,24 @@ u32 __stacksize__ = 2 * 1024 * 1024;
 // Linear (GPU-visible) heap: only the screen framebuffers and audio buffers live here,
 // so shrink it from libctru's 32 MiB default and leave the rest to the main heap.
 u32 __ctru_linear_heap_size = 8 * 1024 * 1024;
+
+// libctru gives threads created without attributes (std::thread) a 32 KiB stack, which
+// OpenRCT2's worker threads (object scanning, JSON parsing) overflow. The executable is
+// linked with -Wl,--wrap=pthread_create so every such thread gets a larger one.
+int __real_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (*start)(void*), void* arg);
+int __wrap_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (*start)(void*), void* arg)
+{
+    if (attr != nullptr)
+    {
+        return __real_pthread_create(thread, attr, start, arg);
+    }
+    pthread_attr_t bigStack;
+    pthread_attr_init(&bigStack);
+    pthread_attr_setstacksize(&bigStack, 512 * 1024);
+    int rc = __real_pthread_create(thread, &bigStack, start, arg);
+    pthread_attr_destroy(&bigStack);
+    return rc;
+}
 }
 
 namespace OpenRCT2::Platform

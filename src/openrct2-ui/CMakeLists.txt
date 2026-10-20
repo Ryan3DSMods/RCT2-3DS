@@ -150,6 +150,8 @@ if (NINTENDO_3DS)
     # SDL's own main() wrapper is not used; Ui.cpp keeps its main() and the
     # 3DS platform layer brings the console up itself.
     target_compile_definitions(openrct2 PRIVATE SDL_MAIN_HANDLED)
+    # See __wrap_pthread_create in Platform.3DS.cpp: bigger stacks for std::thread.
+    target_link_options(openrct2 PRIVATE -Wl,--wrap=pthread_create)
     ctr_generate_smdh("${CMAKE_BINARY_DIR}/openrct2.smdh"
         NAME "OpenRCT2"
         DESCRIPTION "Open-source re-implementation of RollerCoaster Tycoon 2"
