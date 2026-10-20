@@ -130,6 +130,15 @@ public:
                 pixelFormat = format;
             }
         }
+#ifdef __3DS__
+        // SDL's software renderer also offers 16-bit formats, which the smallest-format rule above
+        // would select; CopyBitsToTexture only fills 32-bit textures correctly. The window surface
+        // is 32-bit RGBA on the 3DS, so use that: no conversion on the blit, and visible output.
+        {
+            uint32_t windowFormat = SDL_GetWindowPixelFormat(_window);
+            pixelFormat = (SDL_BYTESPERPIXEL(windowFormat) == 4) ? windowFormat : SDL_PIXELFORMAT_ARGB8888;
+        }
+#endif
 
         ScaleQuality scaleQuality = GetContext()->GetUiContext().GetScaleQuality();
         if (scaleQuality == ScaleQuality::smoothNearestNeighbour)

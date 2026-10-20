@@ -112,11 +112,10 @@ int __wrap_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (
 
 namespace OpenRCT2::Platform
 {
-    static constexpr const utf8* kUserRoot = "sdmc:/3ds/openrct2";
-    static constexpr const utf8* kSdDataPath = "sdmc:/3ds/openrct2/data";
-    static constexpr const utf8* kRomfsDataPath = "romfs:/data";
-    static constexpr const utf8* kRct2Path = "sdmc:/3ds/openrct2/rct2";
-    static constexpr const utf8* kRct1Path = "sdmc:/3ds/openrct2/rct1";
+    static constexpr const utf8* kUserRoot = "/3ds/openrct2";
+    static constexpr const utf8* kSdDataPath = "/3ds/openrct2/data";
+    static constexpr const utf8* kRct2Path = "/3ds/openrct2/rct2";
+    static constexpr const utf8* kRct1Path = "/3ds/openrct2/rct1";
 
     static bool _cfguReady = false;
     static bool _romfsReady = false;
@@ -183,7 +182,7 @@ namespace OpenRCT2::Platform
         osSetSpeedupEnable(true);
         _romfsReady = R_SUCCEEDED(romfsInit());
         _cfguReady = R_SUCCEEDED(cfguInit());
-        mkdir("sdmc:/3ds", 0777);
+        mkdir("/3ds", 0777);
         mkdir(kUserRoot, 0777);
     }
 
@@ -206,7 +205,7 @@ namespace OpenRCT2::Platform
     void N3DSConsoleInit()
     {
         consoleInit(GFX_TOP, nullptr);
-        _logFile = std::fopen("sdmc:/3ds/openrct2/openrct2.log", "w");
+        _logFile = std::fopen("/3ds/openrct2/openrct2.log", "w");
         _consoleDevoptab = devoptab_list[STD_OUT];
         _teeDevoptab = *_consoleDevoptab;
         _teeDevoptab.name = "tee";
@@ -272,10 +271,8 @@ namespace OpenRCT2::Platform
 
     std::string GetInstallPath()
     {
-        if (_romfsReady && Path::DirectoryExists(kRomfsDataPath))
-        {
-            return kRomfsDataPath;
-        }
+        // Paths deliberately carry no "sdmc:" device prefix: std::filesystem only treats paths
+        // starting with '/' as absolute, and libctru maps those to the SD card anyway.
         return kSdDataPath;
     }
 
@@ -538,7 +535,7 @@ namespace OpenRCT2::Platform
     std::vector<std::string> GetSearchablePathsRCT2()
     {
         struct stat st{};
-        bool hasG1 = stat("sdmc:/3ds/openrct2/rct2/Data/g1.dat", &st) == 0;
+        bool hasG1 = stat("/3ds/openrct2/rct2/Data/g1.dat", &st) == 0;
         std::printf("Looking for RCT2 in %s: Data/g1.dat %s\n", kRct2Path, hasG1 ? "found" : "NOT found");
         return { kRct2Path };
     }

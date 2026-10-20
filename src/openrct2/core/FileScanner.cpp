@@ -319,6 +319,22 @@ public:
 
     void getDirectoryChildren(std::vector<DirectoryChild>& children, const std::string& path) override
     {
+    #ifdef __3DS__
+        // scandir() yields nothing on libctru's SD card devoptab; readdir() is what it implements.
+        DIR* dir = opendir(path.c_str());
+        if (dir != nullptr)
+        {
+            while (const struct dirent* node = readdir(dir))
+            {
+                if (!String::equals(node->d_name, ".") && !String::equals(node->d_name, ".."))
+                {
+                    children.push_back(createChild(path.c_str(), node));
+                }
+            }
+            closedir(dir);
+        }
+        return;
+    #endif
         struct dirent** namelist;
         int32_t count = scandir(path.c_str(), &namelist, filterFunc, alphasort);
         if (count > 0)
