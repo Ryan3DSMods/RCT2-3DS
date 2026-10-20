@@ -28,8 +28,11 @@
 
     #include <3ds.h>
     #include <pthread.h>
+    #include <csignal>
     #include <cstdio>
     #include <cstdlib>
+    #include <exception>
+    #include <unistd.h>
     #include <cstring>
     #include <ctime>
     #include <sys/stat.h>
@@ -116,9 +119,61 @@ namespace OpenRCT2::Platform
     static bool _cfguReady = false;
     static bool _romfsReady = false;
 
+    static void WaitForStart()
+    {
+        std::printf("Press START to return to the Homebrew Launcher.\n");
+        while (aptMainLoop())
+        {
+            hidScanInput();
+            if (hidKeysDown() & KEY_START)
+                break;
+            gspWaitForVBlank();
+        }
+    }
+
+    // Any way the process can end short of returning from main() is routed through here so
+    // the message is readable on the top screen before the Homebrew Launcher takes over.
+    static void OnTerminate()
+    {
+        std::printf("\n*** std::terminate ***\n");
+        if (auto current = std::current_exception())
+        {
+            try
+            {
+                std::rethrow_exception(current);
+            }
+            catch (const std::exception& e)
+            {
+                std::printf("uncaught exception: %s\n", e.what());
+            }
+            catch (...)
+            {
+                std::printf("uncaught exception of unknown type\n");
+            }
+        }
+        WaitForStart();
+        _exit(134);
+    }
+
+    static void OnAbortSignal(int)
+    {
+        std::printf("\n*** abort() ***\n");
+        WaitForStart();
+        _exit(134);
+    }
+
+    static void OnExit()
+    {
+        std::printf("\n*** exit() called ***\n");
+        WaitForStart();
+    }
+
     // Called from main() before anything else on the console.
     void N3DSPlatformInit()
     {
+        std::set_terminate(OnTerminate);
+        std::signal(SIGABRT, OnAbortSignal);
+        std::atexit(OnExit);
         // New 3DS: 804 MHz + L2 cache. No-op on an original 3DS.
         osSetSpeedupEnable(true);
         _romfsReady = R_SUCCEEDED(romfsInit());
@@ -142,6 +197,9 @@ namespace OpenRCT2::Platform
 
     void N3DSPlatformExit()
     {
+        // Keep the top-screen log readable until the user dismisses it.
+        std::printf("\nOpenRCT2 has exited normally.\n");
+        WaitForStart();
         if (_cfguReady)
             cfguExit();
         if (_romfsReady)
@@ -219,8 +277,15 @@ namespace OpenRCT2::Platform
 
     std::string ResolveCasing(std::string_view path, bool fileExists)
     {
-        // Case-insensitive file system: whatever casing was asked for will do.
-        return std::string(path);
+        // The SD card (FAT32) is case-insensitive, so if the file exists the requested casing is
+        // fine as it is. An empty result means "not present": callers rely on that to try other
+        // locations (e.g. the Steam RCT1 Deluxe layout under RCTdeluxe_install/).
+        std::string result;
+        if (fileExists)
+        {
+            result = std::string(path);
+        }
+        return result;
     }
 
     std::string FormatShortDate(std::time_t timestamp)
@@ -432,6 +497,9 @@ namespace OpenRCT2::Platform
 
     std::vector<std::string> GetSearchablePathsRCT2()
     {
+        struct stat st{};
+        bool hasG1 = stat("sdmc:/3ds/openrct2/rct2/Data/g1.dat", &st) == 0;
+        std::printf("Looking for RCT2 in %s: Data/g1.dat %s\n", kRct2Path, hasG1 ? "found" : "NOT found");
         return { kRct2Path };
     }
 

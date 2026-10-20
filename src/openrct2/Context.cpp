@@ -8,7 +8,8 @@
  *****************************************************************************/
 
 #ifdef __EMSCRIPTEN__
-    #include <cassert>
+    #include <cstdio>
+#include <cassert>
     #include <emscripten.h>
 #endif // __EMSCRIPTEN__
 
@@ -456,17 +457,21 @@ namespace OpenRCT2
 
             if (!gOpenRCT2Headless)
             {
+                LOG_INFO("Creating window...");
                 _uiContext->CreateWindow();
+                LOG_INFO("Window created.");
             }
 
             EnsureUserContentDirectoriesExist();
 
             if (!gOpenRCT2Headless)
             {
+                LOG_INFO("Initialising audio...");
                 Audio::Init();
                 Audio::PopulateDevices();
                 Audio::InitRideSoundsAndInfo();
                 Audio::gGameSoundsOff = !Config::Get().sound.masterSoundEnabled;
+                LOG_INFO("Audio initialised.");
             }
 
             auto intent = Intent(INTENT_ACTION_INIT_CHAT);
@@ -644,6 +649,9 @@ namespace OpenRCT2
         void OpenProgress(StringId captionStringId) override
         {
             auto captionString = _localisationService->GetString(captionStringId);
+#ifdef __3DS__
+            std::printf("%s\n", captionString);
+#endif
             auto intent = Intent(INTENT_ACTION_PROGRESS_OPEN);
             intent.PutExtra(INTENT_EXTRA_MESSAGE, captionString);
             ContextOpenIntent(&intent);
@@ -655,6 +663,17 @@ namespace OpenRCT2
                 return;
 
             _forcedUpdateTimer.Restart();
+#ifdef __3DS__
+            {
+                static uint32_t lastPrintTicks = 0;
+                auto ticks = Platform::GetTicks();
+                if (ticks - lastPrintTicks > 2000 || currentProgress + 1 >= totalCount)
+                {
+                    lastPrintTicks = ticks;
+                    std::printf("  %u / %u\n", static_cast<unsigned>(currentProgress), static_cast<unsigned>(totalCount));
+                }
+            }
+#endif
 
             auto intent = Intent(INTENT_ACTION_PROGRESS_SET);
             intent.PutExtra(INTENT_EXTRA_PROGRESS_OFFSET, currentProgress);
