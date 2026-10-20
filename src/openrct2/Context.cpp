@@ -489,6 +489,9 @@ namespace OpenRCT2
 
             ContextInit();
             ResetSubsystems();
+#ifdef __3DS__
+            Platform::N3DSLogMemory("after subsystems reset");
+#endif
 
             if (!gOpenRCT2Headless)
             {
@@ -1022,7 +1025,12 @@ namespace OpenRCT2
                 return false;
             }
             GfxLoadG2PalettesFontsTracks();
+#ifdef __3DS__
+            // RCT1's csg1.dat is 41 MiB loaded whole into RAM: not affordable on the console yet.
+            Platform::N3DSLogMemory("after g1/g2");
+#else
             GfxLoadCsg();
+#endif
             FontSpriteInitialiseCharacters();
             return true;
         }

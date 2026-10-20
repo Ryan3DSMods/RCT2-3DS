@@ -216,6 +216,8 @@ namespace OpenRCT2::Platform
     void N3DSPlatformExit();
     // Turn the top screen into a text console (stdout). Call after SDL's video init.
     void N3DSConsoleInit();
+    // Print heap usage on the console, prefixed with a tag.
+    void N3DSLogMemory(const char* tag);
 #endif
 
     bool IsRunningInWine();

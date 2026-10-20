@@ -29,6 +29,7 @@
     #include <3ds.h>
     #include <pthread.h>
     #include <csignal>
+    #include <malloc.h>
     #include <cstdio>
     #include <cstdlib>
     #include <exception>
@@ -119,6 +120,8 @@ namespace OpenRCT2::Platform
     static bool _cfguReady = false;
     static bool _romfsReady = false;
 
+    void N3DSLogMemory(const char* tag);
+
     static void WaitForStart()
     {
         std::printf("Press START to return to the Homebrew Launcher.\n");
@@ -136,6 +139,7 @@ namespace OpenRCT2::Platform
     static void OnTerminate()
     {
         std::printf("\n*** std::terminate ***\n");
+        N3DSLogMemory("at terminate");
         if (auto current = std::current_exception())
         {
             try
@@ -193,6 +197,16 @@ namespace OpenRCT2::Platform
             static_cast<unsigned long>(__ctru_linear_heap_size / 1024),
             static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION) / 1024),
             static_cast<unsigned long>(osGetMemRegionSize(MEMREGION_APPLICATION) / 1024));
+    }
+
+    void N3DSLogMemory(const char* tag)
+    {
+        struct mallinfo mi = mallinfo();
+        std::printf(
+            "[mem] %s: heap used %lu KiB, free %lu KiB (of %lu KiB); linear free %lu KiB (of %lu KiB)\n", tag,
+            static_cast<unsigned long>(mi.uordblks / 1024), static_cast<unsigned long>((__ctru_heap_size - mi.uordblks) / 1024),
+            static_cast<unsigned long>(__ctru_heap_size / 1024), static_cast<unsigned long>(linearSpaceFree() / 1024),
+            static_cast<unsigned long>(__ctru_linear_heap_size / 1024));
     }
 
     void N3DSPlatformExit()
