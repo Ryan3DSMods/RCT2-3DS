@@ -14,7 +14,9 @@
 #include "../platform/Platform.h"
 #include "../scripting/ScriptEngine.h"
 
-#include <linenoise.hpp>
+#ifndef __3DS__
+    #include <linenoise.hpp>
+#endif
 
 using namespace OpenRCT2;
 
@@ -25,6 +27,10 @@ using namespace OpenRCT2;
 
 void StdInOutConsole::Start()
 {
+#ifdef __3DS__
+    // No terminal on the console: there is nothing to read commands from.
+    return;
+#else
     // Only start if stdin/stdout is a TTY
     if (!isatty(fileno(stdin)) || !isatty(fileno(stdout)))
     {
@@ -70,6 +76,7 @@ void StdInOutConsole::Start()
         }
     });
     replThread.detach();
+#endif // __3DS__
 }
 
 std::future<void> StdInOutConsole::Eval(const std::string& s)
@@ -107,7 +114,9 @@ void StdInOutConsole::ProcessEvalQueue()
 
 void StdInOutConsole::Clear()
 {
+#ifndef __3DS__
     linenoise::linenoiseClearScreen();
+#endif
 }
 
 void StdInOutConsole::Close()
@@ -157,7 +166,9 @@ void StdInOutConsole::WriteLine(const std::string& s, FormatToken colourFormat)
 
             std::printf("\r%s%s\x1b[0m\x1b[0K\r\n", formatBegin.c_str(), mainString);
             std::fflush(stdout);
+#ifndef __3DS__
             linenoise::linenoiseEditRefreshLine();
+#endif
         }
         else
         {

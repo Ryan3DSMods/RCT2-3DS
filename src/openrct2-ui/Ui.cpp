@@ -16,6 +16,9 @@
 
 #include <memory>
 #include <openrct2/Context.h>
+#ifdef __3DS__
+    #include <openrct2/platform/Platform.h>
+#endif
 #include <openrct2/Diagnostic.h>
 #include <openrct2/OpenRCT2.h>
 #include <openrct2/PlatformEnvironment.h>
@@ -52,6 +55,9 @@ int main(int argc, const char** argv)
         Module.canvas.addEventListener("contextmenu", function(e) { e.preventDefault(); });
     });
 #endif
+#ifdef __3DS__
+    OpenRCT2::Platform::N3DSPlatformInit();
+#endif
     int32_t rc = EXIT_SUCCESS;
     auto runGame = CommandLineRun(argv, argc);
     RegisterBitmapReader();
@@ -86,6 +92,9 @@ int main(int argc, const char** argv)
     {
         rc = EXIT_FAILURE;
     }
+#ifdef __3DS__
+    OpenRCT2::Platform::N3DSPlatformExit();
+#endif
     return rc;
 }
 

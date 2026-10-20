@@ -119,6 +119,29 @@ option(ENABLE_UBSAN "Enable the UndefinedBehaviourSanitizer.")
 option(ENABLE_HEADERS_CHECK "Check if include directives in header files are correct. Only works with clang" OFF)
 option(DISABLE_GUI "Don't build GUI. (Headless only.)")
 
+# Nintendo 3DS (devkitARM / libctru) homebrew build. The toolchain file
+# (${DEVKITPRO}/cmake/3DS.cmake) defines NINTENDO_3DS. The console has no
+# network stack we want, no OpenGL, ~178 MB of RAM on a New 3DS and a
+# 400x240 screen, so everything optional is switched off up front.
+if (NINTENDO_3DS)
+    message(STATUS "Configuring for Nintendo 3DS (devkitARM)")
+    set(DISABLE_NETWORK ON CACHE BOOL "" FORCE)
+    set(DISABLE_HTTP ON CACHE BOOL "" FORCE)
+    set(DISABLE_TTF ON CACHE BOOL "" FORCE)
+    set(DISABLE_VERSION_CHECKER ON CACHE BOOL "" FORCE)
+    set(DISABLE_OPENGL ON CACHE BOOL "" FORCE)
+    set(DISABLE_FLAC ON CACHE BOOL "" FORCE)
+    set(DISABLE_VORBIS ON CACHE BOOL "" FORCE)
+    set(DISABLE_DISCORD_RPC ON CACHE BOOL "" FORCE)
+    set(DISABLE_GOOGLE_BENCHMARK ON CACHE BOOL "" FORCE)
+    set(ENABLE_SCRIPTING OFF CACHE BOOL "" FORCE)
+    set(DOWNLOAD_TITLE_SEQUENCES OFF CACHE BOOL "" FORCE)
+    set(DOWNLOAD_OBJECTS OFF CACHE BOOL "" FORCE)
+    set(DOWNLOAD_OPENSFX OFF CACHE BOOL "" FORCE)
+    set(DOWNLOAD_OPENMUSIC OFF CACHE BOOL "" FORCE)
+    set(WITH_TESTS OFF CACHE BOOL "" FORCE)
+endif ()
+
 
 if (FORCE32)
     set(TARGET_M "-m32")
@@ -179,7 +202,9 @@ set(SUPPORTED_CHECK_CXX_COMPILER_FLAGS "")
 
 include(cmake/ipo.cmake)
 list(APPEND IPO_ENABLED_BUILDS RELEASE RELWITHDEBINFO MINSIZEREL)
-ipo_enable("${IPO_ENABLED_BUILDS}")
+if (NOT NINTENDO_3DS)
+    ipo_enable("${IPO_ENABLED_BUILDS}")
+endif ()
 
 # Describe current version in terms of closest tag
 execute_process(
@@ -355,6 +380,26 @@ else ()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=objc-method-access")
     endif()
 
+    if (NINTENDO_3DS)
+        # A brand-new compiler on a brand-new platform: keep warnings visible but not fatal.
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error")
+        # arm-none-eabi defines int32_t as 'long int' (and uint32_t as 'long unsigned int'),
+        # unlike every platform OpenRCT2 already runs on, where it is 'int'. Hundreds of call
+        # sites rely on int32_t and int being the same type (std::clamp(int32_t, 0, 10) and
+        # friends), so redefine the compiler's builtin typedef macros before any header sees
+        # them. The ABI is identical (both are 32-bit); only the C++ type identity changes.
+        set(OPENRCT2_3DS_INT32_FLAGS
+            -U__INT32_TYPE__ -D__INT32_TYPE__=int
+            -U__UINT32_TYPE__ "-D__UINT32_TYPE__=unsigned int"
+            -U__INT_LEAST32_TYPE__ -D__INT_LEAST32_TYPE__=int
+            -U__UINT_LEAST32_TYPE__ "-D__UINT_LEAST32_TYPE__=unsigned int"
+            -U__INT32_C "-D__INT32_C(c)=c"
+            -U__UINT32_C "-D__UINT32_C(c)=c ## U")
+        add_compile_options(${OPENRCT2_3DS_INT32_FLAGS})
+        # nlohmann/json's std::filesystem::path conversions need char8_t, which is disabled above.
+        add_compile_definitions(JSON_HAS_FILESYSTEM=0 JSON_HAS_EXPERIMENTAL_FILESYSTEM=0)
+    endif ()
+
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=stringop-overflow")
     endif()
@@ -369,7 +414,8 @@ else ()
         set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     endif ()
 
-    if (HAIKU OR (APPLE AND NOT USE_MMAP))
+    if (HAIKU OR NINTENDO_3DS OR (APPLE AND NOT USE_MMAP))
+        # 3DS: a static, non-PIC executable; devkitARM uses -mword-relocations instead.
         set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
     else ()
         set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -392,7 +438,9 @@ endif ()
 
 # Include sub-projects
 include("${ROOT_DIR}/src/openrct2/CMakeLists.txt" NO_POLICY_SCOPE)
-include("${ROOT_DIR}/src/openrct2-cli/CMakeLists.txt" NO_POLICY_SCOPE)
+if (NOT NINTENDO_3DS)
+    include("${ROOT_DIR}/src/openrct2-cli/CMakeLists.txt" NO_POLICY_SCOPE)
+endif ()
 if(NOT DISABLE_GUI)
     include("${ROOT_DIR}/src/openrct2-ui/CMakeLists.txt" NO_POLICY_SCOPE)
 endif()
@@ -511,7 +559,9 @@ if (NOT MACOS_BUNDLE OR (MACOS_BUNDLE AND WITH_TESTS))
         if(NOT DISABLE_GUI)
             install(TARGETS "openrct2" RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
         endif()
-        install(TARGETS "openrct2-cli" OPTIONAL RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+        if (NOT NINTENDO_3DS)
+            install(TARGETS "openrct2-cli" OPTIONAL RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+        endif ()
         install(FILES ${DOC_FILES} DESTINATION "${CMAKE_INSTALL_DOCDIR}")
         if (NOT HAIKU)
             install(FILES "distribution/linux/io.openrct2.openrct2.appdata.xml" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")

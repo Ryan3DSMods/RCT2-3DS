@@ -145,6 +145,20 @@ if (MSVC)
     add_definitions(-D__DISABLE_DLL_PROXY__)
 endif ()
 
+# Nintendo 3DS: wrap the ELF into a .3dsx that the Homebrew Launcher can run.
+if (NINTENDO_3DS)
+    # SDL's own main() wrapper is not used; Ui.cpp keeps its main() and the
+    # 3DS platform layer brings the console up itself.
+    target_compile_definitions(openrct2 PRIVATE SDL_MAIN_HANDLED)
+    ctr_generate_smdh("${CMAKE_BINARY_DIR}/openrct2.smdh"
+        NAME "OpenRCT2"
+        DESCRIPTION "Open-source re-implementation of RollerCoaster Tycoon 2"
+        AUTHOR "OpenRCT2 developers")
+    ctr_create_3dsx(openrct2
+        OUTPUT "${CMAKE_BINARY_DIR}/openrct2.3dsx"
+        SMDH "${CMAKE_BINARY_DIR}/openrct2.smdh")
+endif ()
+
 # Add headers check to verify all headers carry their dependencies.
 # Only valid for Clang for now:
 # - GCC 8 does not support -Wno-pragma-once-outside-header

@@ -7,7 +7,7 @@
  * OpenRCT2 is licensed under the GNU General Public License version 3.
  *****************************************************************************/
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__3DS__)
     #include "RTL.h"
 
     #include <algorithm>

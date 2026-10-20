@@ -7,7 +7,7 @@
  * OpenRCT2 is licensed under the GNU General Public License version 3.
  *****************************************************************************/
 
-#if defined(_WIN32) && defined(USE_FRIBIDI)
+#if (defined(_WIN32) || defined(__3DS__)) && defined(USE_FRIBIDI)
     #include "RTL.h"
 
     #include "../Diagnostic.h"
@@ -49,7 +49,7 @@ std::string FixRTL(std::string& input)
 
     return std::string(outputString);
 }
-#elif defined(_WIN32)
+#elif defined(_WIN32) || defined(__3DS__)
     #include "../Diagnostic.h"
     #include "RTL.h"
 

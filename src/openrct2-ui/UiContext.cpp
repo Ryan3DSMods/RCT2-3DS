@@ -29,6 +29,9 @@
 #include <openrct2-ui/input/MouseInput.h>
 #include <openrct2-ui/interface/Window.h>
 #include <openrct2/Context.h>
+#ifdef __3DS__
+    #include <openrct2/platform/Platform.h>
+#endif
 #include <openrct2/Diagnostic.h>
 #include <openrct2/Input.h>
 #include <openrct2/Version.h>
@@ -123,6 +126,10 @@ public:
         {
             SDLException::Throw("SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK)");
         }
+#ifdef __3DS__
+        // The game runs on the bottom (touch) screen; the top screen shows the log.
+        Platform::N3DSConsoleInit();
+#endif
         _cursorRepository.LoadCursors();
         _shortcutManager.loadUserBindings();
     }
@@ -630,7 +637,12 @@ public:
         SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, Config::Get().general.minimizeFullscreenFocusLoss ? "1" : "0");
 
         // Set window position to default display
+#ifdef __3DS__
+        // SDL display 0 is the top screen, display 1 the bottom (touch) screen.
+        int32_t defaultDisplay = 1;
+#else
         int32_t defaultDisplay = std::clamp(Config::Get().general.defaultDisplay, 0, 0xFFFF);
+#endif
         auto windowPos = ScreenCoordsXY{ static_cast<int32_t>(SDL_WINDOWPOS_UNDEFINED_DISPLAY(defaultDisplay)),
                                          static_cast<int32_t>(SDL_WINDOWPOS_UNDEFINED_DISPLAY(defaultDisplay)) };
 
@@ -809,6 +821,11 @@ private:
             width = 1280;
         if (height <= 0)
             height = 720;
+#ifdef __3DS__
+        // The bottom screen is exactly 320x240; SDL's 3DS backend does not scale.
+        width = 320;
+        height = 240;
+#endif
 
         // Create window in window first rather than fullscreen so we have the display the window is on first
         uint32_t flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
@@ -829,7 +846,9 @@ private:
 
         ApplyScreenSaverLockSetting();
 
+#ifndef __3DS__
         SDL_SetWindowMinimumSize(_window, 720, 480);
+#endif
         SetCursorTrap(Config::Get().general.trapCursor);
         _platformUiContext->SetWindowIcon(_window);
 

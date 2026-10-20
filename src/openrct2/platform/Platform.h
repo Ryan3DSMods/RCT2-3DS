@@ -210,6 +210,13 @@ namespace OpenRCT2::Platform
     void* GetAssetManager();
     const std::vector<AssetInfo>& GetAssetList();
 #endif
+#ifdef __3DS__
+    // Console bring-up / teardown (CPU speed-up, RomFS, system config). Called from main().
+    void N3DSPlatformInit();
+    void N3DSPlatformExit();
+    // Turn the top screen into a text console (stdout). Call after SDL's video init.
+    void N3DSConsoleInit();
+#endif
 
     bool IsRunningInWine();
     bool IsColourTerminalSupported();

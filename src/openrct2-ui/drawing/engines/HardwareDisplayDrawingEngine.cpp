@@ -75,7 +75,12 @@ public:
 
     void Initialise() override
     {
+#ifdef __3DS__
+        // Only SDL's software renderer exists on the 3DS; it blits into the screen framebuffer.
+        _sdlRenderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_SOFTWARE);
+#else
         _sdlRenderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | (_useVsync ? SDL_RENDERER_PRESENTVSYNC : 0));
+#endif
     }
 
     void SetVSync(bool vsync) override

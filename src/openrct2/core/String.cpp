@@ -12,13 +12,17 @@
 
 #include <cassert>
 #include <cctype>
+#include <cerrno>
 #include <cstring>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
 
-#ifndef _WIN32
+#if defined(__3DS__)
+    #include <cwctype>
+    #include <iconv.h>
+#elif !defined(_WIN32)
     #if defined(__linux__) || defined(__sun)
         #include <alloca.h>
     #endif
@@ -56,6 +60,17 @@ namespace OpenRCT2::String
         auto result = std::string(sizeReq, 0);
         WideCharToMultiByte(EnumValue(CodePage::utf8), 0, src.data(), srcLen, result.data(), sizeReq, nullptr, nullptr);
         return result;
+#elif defined(__3DS__)
+        // wchar_t is UTF-32 on arm-none-eabi.
+        std::string result;
+        result.reserve(src.size());
+        for (wchar_t wc : src)
+        {
+            utf8 buffer[8];
+            auto end = UTF8WriteCodepoint(buffer, static_cast<uint32_t>(wc));
+            result.append(buffer, end);
+        }
+        return result;
 #else
     // Which constructor to use depends on the size of wchar_t...
     // UTF-32 is the default on most POSIX systems; Windows uses UTF-16.
@@ -83,6 +98,18 @@ namespace OpenRCT2::String
         int sizeReq = MultiByteToWideChar(EnumValue(CodePage::utf8), 0, src.data(), srcLen, nullptr, 0);
         auto result = std::wstring(sizeReq, 0);
         MultiByteToWideChar(EnumValue(CodePage::utf8), 0, src.data(), srcLen, result.data(), sizeReq);
+        return result;
+#elif defined(__3DS__)
+        std::wstring result;
+        std::string copy(src);
+        const utf8* ch = copy.c_str();
+        while (*ch != '\0')
+        {
+            const utf8* next = nullptr;
+            uint32_t codepoint = UTF8GetNext(ch, &next);
+            result.push_back(static_cast<wchar_t>(codepoint));
+            ch = next;
+        }
         return result;
 #else
         icu::UnicodeString str = icu::UnicodeString::fromUTF8(std::string(src));
@@ -559,7 +586,28 @@ namespace OpenRCT2::String
         return std::string(startSubstr, stringLength);
     }
 
-#ifndef _WIN32
+#if defined(__3DS__)
+    static const char* getIconvCodePage(OpenRCT2::CodePage codePage)
+    {
+        switch (codePage)
+        {
+            case OpenRCT2::CodePage::cp932:
+                return "CP932";
+            case OpenRCT2::CodePage::cp936:
+                return "CP936";
+            case OpenRCT2::CodePage::cp949:
+                return "CP949";
+            case OpenRCT2::CodePage::cp950:
+                return "CP950";
+            case OpenRCT2::CodePage::cp1252:
+                return "CP1252";
+            case OpenRCT2::CodePage::utf8:
+                return "UTF-8";
+            default:
+                throw std::runtime_error("Unsupported code page: " + std::to_string(EnumValue(codePage)));
+        }
+    }
+#elif !defined(_WIN32)
     static const char* getIcuCodePage(OpenRCT2::CodePage codePage)
     {
         switch (codePage)
@@ -610,6 +658,44 @@ namespace OpenRCT2::String
         }
 
         return dst;
+#elif defined(__3DS__)
+        if (srcCodePage == CodePage::utf8)
+        {
+            return std::string(src);
+        }
+        iconv_t cd = iconv_open("UTF-8", getIconvCodePage(srcCodePage));
+        if (cd == reinterpret_cast<iconv_t>(-1))
+        {
+            return std::string(src);
+        }
+        std::string result;
+        std::string input(src);
+        char* inPtr = input.data();
+        size_t inLeft = input.size();
+        char outBuffer[256];
+        while (inLeft > 0)
+        {
+            char* outPtr = outBuffer;
+            size_t outLeft = sizeof(outBuffer);
+            size_t rc = iconv(cd, &inPtr, &inLeft, &outPtr, &outLeft);
+            result.append(outBuffer, outPtr - outBuffer);
+            if (rc == static_cast<size_t>(-1))
+            {
+                if (errno == E2BIG)
+                    continue;
+                // Invalid or truncated sequence: skip one byte and keep going.
+                if (inLeft > 0)
+                {
+                    result.push_back('?');
+                    inPtr++;
+                    inLeft--;
+                    continue;
+                }
+                break;
+            }
+        }
+        iconv_close(cd);
+        return result;
 #else
         const char* codepage = getIcuCodePage(srcCodePage);
         icu::UnicodeString convertString(src.data(), codepage);
@@ -647,6 +733,13 @@ namespace OpenRCT2::String
         }
 
         return toUtf8(dstW);
+#elif defined(__3DS__)
+        auto wide = toWideChar(src);
+        for (auto& c : wide)
+        {
+            c = static_cast<wchar_t>(std::towupper(static_cast<wint_t>(c)));
+        }
+        return toUtf8(wide);
 #else
         icu::UnicodeString str = icu::UnicodeString::fromUTF8(std::string(src));
         str.toUpper();

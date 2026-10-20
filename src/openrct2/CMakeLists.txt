@@ -193,7 +193,7 @@ if (EMSCRIPTEN)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXPORTED_FUNCTIONS=${EMSCRIPTEN_EXPORTED_FUNCTIONS} --js-library ${ROOT_DIR}/emscripten/deps.js")
 endif()
 
-if (NOT MINGW AND NOT MSVC AND NOT EMSCRIPTEN)
+if (NOT MINGW AND NOT MSVC AND NOT EMSCRIPTEN AND NOT NINTENDO_3DS)
     if (APPLE AND NOT MACOS_USE_DEPENDENCIES)
         execute_process(COMMAND brew --prefix icu4c OUTPUT_VARIABLE HOMEBREW_PREFIX_ICU OUTPUT_STRIP_TRAILING_WHITESPACE)
         # Needed for linking with non-broken icu on Apple platforms
@@ -312,6 +312,12 @@ target_link_options(libopenrct2 PUBLIC $<$<BOOL:${ENABLE_ASAN}>:-fsanitize=addre
 
 target_compile_options(libopenrct2 PUBLIC $<$<BOOL:${ENABLE_UBSAN}>:-fsanitize=undefined>)
 target_link_options(libopenrct2 PUBLIC  $<$<BOOL:${ENABLE_UBSAN}>:-fsanitize=undefined>)
+
+if (NINTENDO_3DS)
+    # Code page conversion (libiconv) and right-to-left text (FriBidi) stand in for ICU.
+    target_compile_definitions(libopenrct2 PRIVATE USE_FRIBIDI)
+    target_link_libraries(libopenrct2 fribidi iconv)
+endif ()
 
 if (CMAKE_LIBRARY_ARCHITECTURE MATCHES "arm-linux-gnueabihf")
     message(STATUS "Linking to armhf libs; adding libatomic")
