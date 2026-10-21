@@ -30,6 +30,7 @@
 #include "Console.hpp"
 #include "Diagnostics.hpp"
 #include "Guard.hpp"
+#include "../platform/Platform.h"
 #include "String.hpp"
 #include "StringBuilder.h"
 
@@ -116,7 +117,11 @@ namespace OpenRCT2::Guard
         switch (_assertBehaviour)
         {
             case AssertBehaviour::abort:
+#ifdef __3DS__
+                Platform::N3DSFatal(formattedMessage.c_str());
+#else
                 abort();
+#endif
             default:
             case AssertBehaviour::cAssert:
                 assert(false);

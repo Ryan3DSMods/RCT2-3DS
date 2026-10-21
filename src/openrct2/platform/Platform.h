@@ -218,6 +218,8 @@ namespace OpenRCT2::Platform
     void N3DSConsoleInit();
     // Print heap usage on the console, prefixed with a tag.
     void N3DSLogMemory(const char* tag);
+    // Print a message, wait for START and end the process.
+    [[noreturn]] void N3DSFatal(const char* message);
 #endif
 
     bool IsRunningInWine();
