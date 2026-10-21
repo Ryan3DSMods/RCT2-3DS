@@ -45,6 +45,10 @@ namespace OpenRCT2::Guard
     static AssertBehaviour _assertBehaviour =
 #ifdef _WIN32
         AssertBehaviour::messageBox
+#elif defined(__3DS__)
+        // Release builds compile assert() out; continuing after a failed allocation only crashes later
+        // in less readable ways. abort() is caught by the console's exit hook, which keeps the message on screen.
+        AssertBehaviour::abort
 #else
         AssertBehaviour::cAssert
 #endif

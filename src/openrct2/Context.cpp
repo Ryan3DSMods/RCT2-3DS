@@ -472,6 +472,9 @@ namespace OpenRCT2
             {
                 LOG_INFO("Initialising audio...");
                 Audio::Init();
+#ifdef __3DS__
+                Platform::N3DSLogMemory("after audio init");
+#endif
                 Audio::PopulateDevices();
                 Audio::InitRideSoundsAndInfo();
                 Audio::gGameSoundsOff = !Config::Get().sound.masterSoundEnabled;
@@ -553,6 +556,9 @@ namespace OpenRCT2
 
             OpenProgress(STR_CHECKING_OBJECT_FILES);
             _objectRepository->LoadOrConstruct(currentLanguage);
+#ifdef __3DS__
+            Platform::N3DSLogMemory("after object index");
+#endif
 
             // Asset packs need to be loaded before any of the objects they may override are.
             // This is especially important to keep in mind with intransient objects like Audio objects,
@@ -798,6 +804,7 @@ namespace OpenRCT2
 
 #ifdef __3DS__
                 std::printf("[park] reading %s\n", path.c_str());
+                Platform::N3DSLogMemory("before park load");
 #endif
                 auto result = parkImporter->LoadFromStream(stream, info.Type == FileType::scenario, false, path.c_str());
 #ifdef __3DS__
@@ -822,6 +829,7 @@ namespace OpenRCT2
                 parkImporter->Import(gameState);
 #ifdef __3DS__
                 std::printf("[park] imported\n");
+                Platform::N3DSLogMemory("after park load");
 #endif
                 SetProgress(100, 100, STR_STRING_M_PERCENT);
 

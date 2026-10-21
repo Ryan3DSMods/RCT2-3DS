@@ -23,11 +23,13 @@
     #include <algorithm>
     #include <cstdint>
     #include <cstdlib>
+    #include <cstdio>
     #include <cstring>
     #include <malloc.h>
     #include <new>
 
 extern "C" {
+extern u32 __ctru_heap_size;
 extern u32 __ctru_linear_heap;
 extern u32 __ctru_linear_heap_size;
 }
@@ -85,7 +87,16 @@ namespace OpenRCT2::N3DSMemory
         if (void* result = std::malloc(size))
             return result;
         // malloc heap exhausted: the linear heap is the last resort for small blocks too.
-        return LinearAlloc(size);
+        if (void* result = LinearAlloc(size))
+            return result;
+
+        struct mallinfo mi = mallinfo();
+        std::printf(
+            "[mem] out of memory: %lu KiB requested; heap used %lu of %lu KiB, linear free %lu of %lu KiB\n",
+            static_cast<unsigned long>(size / 1024), static_cast<unsigned long>(mi.uordblks / 1024),
+            static_cast<unsigned long>(__ctru_heap_size / 1024), static_cast<unsigned long>(linearSpaceFree() / 1024),
+            static_cast<unsigned long>(__ctru_linear_heap_size / 1024));
+        return nullptr;
     }
 
     void Free(void* ptr)
