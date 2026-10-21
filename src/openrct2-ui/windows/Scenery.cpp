@@ -7,6 +7,7 @@
  * OpenRCT2 is licensed under the GNU General Public License version 3.
  *****************************************************************************/
 
+#include <cstdio>
 #include <deque>
 #include <openrct2-ui/UiContext.h>
 #include <openrct2-ui/input/InputManager.h>
@@ -283,8 +284,10 @@ namespace OpenRCT2::Ui::Windows
             updatePressedTab();
 
 #ifdef __3DS__
-            WindowMovePosition(
-                *this, { N3DS::kBottomScreenRight - GetRequiredWidth(), N3DS::kBottomScreenY + kTopToolbarTotalHeight + 1 });
+            // (WindowMovePosition moves by a delta; place the window at the top of the touch screen area.)
+            invalidate();
+            windowPos = { N3DS::kBottomScreenRight - GetRequiredWidth(), N3DS::kBottomScreenY + kTopToolbarTotalHeight + 1 };
+            invalidate();
 #else
             WindowMovePosition(*this, { ContextGetWidth() - GetRequiredWidth(), 0x1D });
 #endif
