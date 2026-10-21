@@ -1244,7 +1244,7 @@ namespace OpenRCT2::Ui::Windows
 
         // TODO: look into using std::span
         template<typename T>
-        void AlignButtons(T toolbarItems, uint16_t xPos)
+        void AlignButtons(T toolbarItems, uint16_t xPos, uint16_t row = 0)
         {
             bool firstItem = true;
             for (auto widgetIndex : toolbarItems)
@@ -1261,6 +1261,12 @@ namespace OpenRCT2::Ui::Windows
                 xPos += widgetWidth;
                 widget.right = xPos;
                 xPos += 1;
+
+                if (widgetIndex != WIDX_SEPARATOR)
+                {
+                    widget.top = row * (kTopToolbarHeight + 1);
+                    widget.bottom = widget.top + kTopToolbarHeight;
+                }
 
                 firstItem = false;
             }
@@ -1281,8 +1287,14 @@ namespace OpenRCT2::Ui::Windows
 
             // Align right hand side toolbar buttons
             auto totalWidth = GetToolbarWidth(kWidgetOrderRightGroup);
+#ifdef __3DS__
+            // Second row, right aligned (left aligned if it is wider than the screen).
+            auto xPos = std::max(0, width - totalWidth);
+            AlignButtons(kWidgetOrderRightGroup, xPos, 1);
+#else
             auto xPos = width - totalWidth;
             AlignButtons(kWidgetOrderRightGroup, xPos);
+#endif
         }
 
         void AlignButtonsCentre()
@@ -1319,10 +1331,14 @@ namespace OpenRCT2::Ui::Windows
             ApplyMapRotation();
             ApplyFootpathPressed();
 
+#ifdef __3DS__
+            AlignButtonsLeftRight();
+#else
             if (!Config::Get().interface.toolbarButtonsCentred)
                 AlignButtonsLeftRight();
             else
                 AlignButtonsCentre();
+#endif
         }
 
         void onDraw(Drawing::RenderTarget& rt) override
@@ -1464,7 +1480,7 @@ namespace OpenRCT2::Ui::Windows
     {
         auto* windowMgr = GetWindowManager();
         auto* window = windowMgr->Create<TopToolbar>(
-            WindowClass::topToolbar, ScreenCoordsXY(0, 0), { ContextGetWidth(), kTopToolbarHeight + 1 },
+            WindowClass::topToolbar, ScreenCoordsXY(0, 0), { ContextGetWidth(), kTopToolbarTotalHeight + 1 },
             { WindowFlag::stickToFront, WindowFlag::transparent, WindowFlag::noBackground, WindowFlag::noTitleBar });
 
         window->setWidgets(_topToolbarWidgets);

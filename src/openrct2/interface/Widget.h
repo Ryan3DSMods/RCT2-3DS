@@ -226,4 +226,10 @@ namespace OpenRCT2
 
     constexpr uint16_t kTextInputSize = 1024;
     constexpr uint16_t kTopToolbarHeight = 27;
+#ifdef __3DS__
+    // The toolbar buttons do not fit in one 400 px row, so the toolbar uses two rows on the 3DS.
+    constexpr uint16_t kTopToolbarTotalHeight = kTopToolbarHeight * 2 + 1;
+#else
+    constexpr uint16_t kTopToolbarTotalHeight = kTopToolbarHeight;
+#endif
 } // namespace OpenRCT2

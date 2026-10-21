@@ -896,8 +896,12 @@ namespace OpenRCT2::Ui::Windows
             return window;
         }
 
+#ifdef __3DS__
+        window = windowMgr->Create<ScenarioSelectWindow>(WindowClass::scenarioSelect, { 0, 0 }, kWindowSize, {}, callback);
+#else
         window = windowMgr->Create<ScenarioSelectWindow>(
             WindowClass::scenarioSelect, {}, kWindowSize, { WindowFlag::autoPosition, WindowFlag::centreScreen }, callback);
+#endif
         return window;
     }
 } // namespace OpenRCT2::Ui::Windows

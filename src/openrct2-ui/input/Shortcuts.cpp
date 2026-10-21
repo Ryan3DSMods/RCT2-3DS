@@ -920,4 +920,31 @@ void ShortcutManager::registerDefaultShortcuts()
         }
     });
     // clang-format on
+
+#ifdef __3DS__
+    // Console buttons. SDL reports them as raw joystick buttons in HID bit order, and "JOY n" means button n-1:
+    // A=1 B=2 SELECT=3 START=4 D-RIGHT=5 D-LEFT=6 D-UP=7 D-DOWN=8 R=9 L=10 X=11 Y=12.
+    static constexpr std::pair<std::string_view, std::string_view> k3DSButtonBindings[] = {
+        { ShortcutId::kInterfaceCloseTop, "JOY 2" },               // B
+        { ShortcutId::kInterfaceShowOptions, "JOY 3" },            // SELECT
+        { ShortcutId::kInterfacePause, "JOY 4" },                  // START
+        { ShortcutId::kViewScrollRight, "JOY 5" },                 // D-pad
+        { ShortcutId::kViewScrollLeft, "JOY 6" },
+        { ShortcutId::kViewScrollUp, "JOY 7" },
+        { ShortcutId::kViewScrollDown, "JOY 8" },
+        { ShortcutId::kViewGeneralZoomIn, "JOY 9" },               // R
+        { ShortcutId::kViewGeneralZoomOut, "JOY 10" },             // L
+        { ShortcutId::kViewGeneralRotateClockwise, "JOY 1" },      // A
+        { ShortcutId::kViewGeneralRotateAnticlockwise, "JOY 12" }, // Y
+        { ShortcutId::kInterfaceOpenMap, "JOY 11" },               // X
+    };
+    for (const auto& [id, chord] : k3DSButtonBindings)
+    {
+        if (auto* shortcut = getShortcut(id); shortcut != nullptr)
+        {
+            shortcut->standard.emplace_back(chord);
+            shortcut->current = shortcut->standard;
+        }
+    }
+#endif
 }

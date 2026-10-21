@@ -133,7 +133,7 @@ void Painter::PaintFPS(RenderTarget& rt)
     const bool isTitle = gLegacyScene == LegacyScene::titleSequence;
     if (!isTitle && Config::Get().interface.toolbarButtonsCentred)
     {
-        screenCoords.y = kTopToolbarHeight + 3;
+        screenCoords.y = kTopToolbarTotalHeight + 3;
     }
 
     drawText(rt, screenCoords, buffer, { OpenRCT2::Drawing::Colour::white });

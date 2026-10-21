@@ -763,7 +763,7 @@ namespace OpenRCT2::Ui::Windows
         }
         else
         {
-            screenPos = { 0, kTopToolbarHeight + 2 };
+            screenPos = { 0, kTopToolbarTotalHeight + 2 };
         }
 
         return windowMgr->Create<TrackListWindow>(WindowClass::trackDesignList, screenPos, kWindowSize, flags, item);

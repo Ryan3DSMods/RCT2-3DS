@@ -707,7 +707,7 @@ public:
     {
         if (loc.x < 0)
             return false;
-        if (loc.y <= kTopToolbarHeight && gLegacyScene != LegacyScene::titleSequence)
+        if (loc.y <= kTopToolbarTotalHeight && gLegacyScene != LegacyScene::titleSequence)
             return false;
         if (loc.x + windowSize.width > ContextGetWidth())
             return false;
@@ -728,7 +728,7 @@ public:
         unk = screenWidth + (unk * 2);
         if (loc.x > unk)
             return false;
-        if (loc.y <= kTopToolbarHeight && gLegacyScene != LegacyScene::titleSequence)
+        if (loc.y <= kTopToolbarTotalHeight && gLegacyScene != LegacyScene::titleSequence)
             return false;
         unk = screenHeight - (windowSize.height / 4);
         if (loc.y > unk)
@@ -745,7 +745,7 @@ public:
         else if (screenPos.x + windowSize.width > screenSize.width)
             screenPos.x = screenSize.width - windowSize.width;
 
-        auto toolbarAllowance = gLegacyScene == LegacyScene::titleSequence ? 0 : (kTopToolbarHeight + 1);
+        auto toolbarAllowance = gLegacyScene == LegacyScene::titleSequence ? 0 : (kTopToolbarTotalHeight + 1);
         if (windowSize.height - toolbarAllowance > screenSize.height || screenPos.y < toolbarAllowance)
             screenPos.y = toolbarAllowance;
         else if (screenPos.y + windowSize.height - toolbarAllowance > screenSize.height)
@@ -848,8 +848,14 @@ public:
         auto& uiContext = GetContext()->GetUiContext();
         auto screenWidth = uiContext.GetWidth();
         auto screenHeight = uiContext.GetHeight();
+#ifdef __3DS__
+        // Windows wider than the screen keep their left edge (tabs) visible; B closes the top window.
+        return ScreenCoordsXY{ std::max(0, (screenWidth - size.width) / 2),
+                               std::max(kTopToolbarTotalHeight + 1, (screenHeight - size.height) / 2) };
+#else
         return ScreenCoordsXY{ (screenWidth - size.width) / 2,
-                               std::max(kTopToolbarHeight + 1, (screenHeight - size.height) / 2) };
+                               std::max(kTopToolbarTotalHeight + 1, (screenHeight - size.height) / 2) };
+#endif
     }
 
     WindowBase* Create(

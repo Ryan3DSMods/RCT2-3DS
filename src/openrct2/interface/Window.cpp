@@ -744,7 +744,11 @@ static constexpr float kWindowScrollLocations[][2] = {
         WindowBase* topWind = windowMgr->FindByClass(WindowClass::topToolbar);
         if (topWind != nullptr)
         {
+#ifdef __3DS__
+            topWind->width = width;
+#else
             topWind->width = std::max(640, width);
+#endif
         }
 
         WindowBase* parkInfoPanel = windowMgr->FindByClass(WindowClass::parkInfoPanel);
@@ -760,7 +764,11 @@ static constexpr float kWindowScrollLocations[][2] = {
             dateInfoPanel->windowPos.y = height - 32;
         }
 
+#ifdef __3DS__
+        auto bottomWidth = width;
+#else
         auto bottomWidth = std::max(640, width);
+#endif
         auto bottomOffset = 0;
         if (parkInfoPanel != nullptr && dateInfoPanel != nullptr)
         {

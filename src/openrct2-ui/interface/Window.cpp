@@ -875,7 +875,7 @@ namespace OpenRCT2::Ui::Windows
     void WindowMoveAndSnap(WindowBase& w, ScreenCoordsXY newWindowCoords, int32_t snapProximity)
     {
         auto originalPos = w.windowPos;
-        int32_t minY = gLegacyScene == LegacyScene::titleSequence ? 1 : kTopToolbarHeight + 2;
+        int32_t minY = gLegacyScene == LegacyScene::titleSequence ? 1 : kTopToolbarTotalHeight + 2;
 
         newWindowCoords.y = std::clamp(newWindowCoords.y, minY, ContextGetHeight() - 34);
 
@@ -950,7 +950,7 @@ namespace OpenRCT2::Ui::Windows
 
             // Calculate the new locations
             auto newWinPos = w->windowPos;
-            w->windowPos = { new_location, new_location + kTopToolbarHeight + 1 };
+            w->windowPos = { new_location, new_location + kTopToolbarTotalHeight + 1 };
 
             // Move the next new location so windows are not directly on top
             new_location += 8;

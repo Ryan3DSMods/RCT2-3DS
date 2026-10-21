@@ -73,6 +73,11 @@ void InputManager::queueInputEvent(const SDL_Event& e)
         case SDL_CONTROLLERBUTTONDOWN:
         case SDL_JOYBUTTONDOWN:
         {
+#ifdef __3DS__
+            // The 3DS bindings use raw joystick button numbers; drop the duplicate controller-layer event.
+            if (e.type == SDL_CONTROLLERBUTTONDOWN)
+                break;
+#endif
             InputEvent ie;
             ie.deviceKind = InputDeviceKind::joyButton;
             ie.modifiers = SDL_GetModState();
@@ -85,6 +90,10 @@ void InputManager::queueInputEvent(const SDL_Event& e)
         case SDL_CONTROLLERBUTTONUP:
         case SDL_JOYBUTTONUP:
         {
+#ifdef __3DS__
+            if (e.type == SDL_CONTROLLERBUTTONUP)
+                break;
+#endif
             InputEvent ie;
             ie.deviceKind = InputDeviceKind::joyButton;
             ie.modifiers = SDL_GetModState();
