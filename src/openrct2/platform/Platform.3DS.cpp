@@ -254,6 +254,9 @@ namespace OpenRCT2::Platform
         return _consoleDevoptab->write_r(r, fd, ptr, len);
     }
 
+    static u8* _topFrameBuffers[2] = {};
+    static u8* _bottomFrameBuffers[2] = {};
+
     static void CopyToScreen(
         gfxScreen_t screen, const uint32_t* pixels, int32_t pitchPixels, int32_t srcX, int32_t srcY, int32_t screenWidth,
         bool isRGBA)
@@ -305,7 +308,8 @@ namespace OpenRCT2::Platform
         return result;
     }
 
-    void N3DSPresentFrame(const uint32_t* pixels, int32_t pitchPixels, int32_t width, int32_t height, bool isRGBA)
+    void N3DSPresentFrame(
+        const uint32_t* pixels, int32_t pitchPixels, int32_t width, int32_t height, bool isRGBA, bool top, bool bottom)
     {
         if (width < N3DS::kVirtualWidth || height < N3DS::kVirtualHeight)
             return;
@@ -315,12 +319,39 @@ namespace OpenRCT2::Platform
             // The console switched the bottom screen to 16-bit single buffering.
             gfxSetScreenFormat(GFX_BOTTOM, GSP_RGBA8_OES);
             gfxSetDoubleBuffering(GFX_BOTTOM, true);
+            // Remember both buffers of each screen (they alternate with every swap).
+            for (int i = 0; i < 2; i++)
+            {
+                _topFrameBuffers[i] = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, nullptr, nullptr);
+                gfxScreenSwapBuffers(GFX_TOP, false);
+                _bottomFrameBuffers[i] = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, nullptr, nullptr);
+                gfxScreenSwapBuffers(GFX_BOTTOM, false);
+            }
         }
-        CopyToScreen(GFX_TOP, pixels, pitchPixels, 0, 0, N3DS::kTopScreenWidth, isRGBA);
-        CopyToScreen(GFX_BOTTOM, pixels, pitchPixels, N3DS::kBottomScreenX, N3DS::kBottomScreenY, N3DS::kBottomScreenWidth, isRGBA);
-        gfxFlushBuffers();
-        gfxScreenSwapBuffers(GFX_TOP, false);
-        gfxScreenSwapBuffers(GFX_BOTTOM, false);
+        // Both framebuffers of a screen must hold the same image, since only one of them gets new pixels per
+        // frame: copy, swap, copy again (the second copy is a plain memcpy of the finished buffer).
+        if (top)
+        {
+            CopyToScreen(GFX_TOP, pixels, pitchPixels, 0, 0, N3DS::kTopScreenWidth, isRGBA);
+            gfxFlushBuffers();
+            gfxScreenSwapBuffers(GFX_TOP, false);
+            u16 w = 0, h = 0;
+            u8* back = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h);
+            u8* front = back == _topFrameBuffers[0] ? _topFrameBuffers[1] : _topFrameBuffers[0];
+            if (front != nullptr)
+                std::memcpy(back, front, static_cast<size_t>(w) * h * 4);
+        }
+        if (bottom)
+        {
+            CopyToScreen(GFX_BOTTOM, pixels, pitchPixels, N3DS::kBottomScreenX, N3DS::kBottomScreenY, N3DS::kBottomScreenWidth, isRGBA);
+            gfxFlushBuffers();
+            gfxScreenSwapBuffers(GFX_BOTTOM, false);
+            u16 w = 0, h = 0;
+            u8* back = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w, &h);
+            u8* front = back == _bottomFrameBuffers[0] ? _bottomFrameBuffers[1] : _bottomFrameBuffers[0];
+            if (front != nullptr)
+                std::memcpy(back, front, static_cast<size_t>(w) * h * 4);
+        }
     }
 
     void N3DSConsoleInit()

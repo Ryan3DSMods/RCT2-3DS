@@ -929,7 +929,16 @@ namespace OpenRCT2
         // Generate and sort columns.
         for (int32_t x = alignedX; x < rightBorder; x += columnWidth)
         {
+#ifdef __3DS__
+            // Fully zoomed out, guests and litter are a few pixels each but thousands of sprites to sort and
+            // draw: skip them so the console keeps a usable frame rate at that zoom.
+            auto paintFlags = viewport->flags;
+            if (viewport->zoom >= ZoomLevel{ 2 })
+                paintFlags.set(ViewportFlag::hideGuests, ViewportFlag::hideStaff);
+            PaintSession* session = PaintSessionAlloc(worldRT, paintFlags, viewport->rotation);
+#else
             PaintSession* session = PaintSessionAlloc(worldRT, viewport->flags, viewport->rotation);
+#endif
             _paintColumns.push_back(session);
 
             RenderTarget& columnRT = session->rt;

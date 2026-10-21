@@ -20,6 +20,7 @@
 #include "Numerics.hpp"
 #include "Path.hpp"
 
+#include <optional>
 #include <chrono>
 #include <list>
 #include <string>
@@ -104,6 +105,15 @@ public:
     std::vector<TItem> LoadOrBuild(int32_t language) const
     {
         std::vector<TItem> items;
+#ifdef __3DS__
+        // Comparing the index against the folders means a stat() of every file, which takes minutes on the
+        // console's SD card. Trust an existing, non-empty index; delete the .idx files to force a rescan.
+        {
+            auto trusted = ReadIndexFile(language, std::nullopt);
+            if (trusted.first && !trusted.second.empty())
+                return std::move(trusted.second);
+        }
+#endif
         auto scanResult = Scan();
         auto readIndexResult = ReadIndexFile(language, scanResult.Stats);
         if (readIndexResult.first)
@@ -213,7 +223,7 @@ private:
         return allItems;
     }
 
-    std::pair<bool, std::vector<TItem>> ReadIndexFile(int32_t language, const DirectoryStats& stats) const
+    std::pair<bool, std::vector<TItem>> ReadIndexFile(int32_t language, std::optional<DirectoryStats> statsOpt) const
     {
         bool loadedItems = false;
         std::vector<TItem> items;
@@ -226,11 +236,13 @@ private:
 
                 // Read header, check if we need to re-scan
                 auto header = fs.ReadValue<FileIndexHeader>();
+                const bool statsMatch = !statsOpt.has_value()
+                    || (header.Stats.TotalFiles == statsOpt->TotalFiles && header.Stats.TotalFileSize == statsOpt->TotalFileSize
+                        && header.Stats.FileDateModifiedChecksum == statsOpt->FileDateModifiedChecksum
+                        && header.Stats.PathChecksum == statsOpt->PathChecksum);
                 if (header.HeaderSize == sizeof(FileIndexHeader) && header.MagicNumber == _magicNumber
                     && header.VersionA == kFileIndexVersion && header.VersionB == _version && header.LanguageId == language
-                    && header.Stats.TotalFiles == stats.TotalFiles && header.Stats.TotalFileSize == stats.TotalFileSize
-                    && header.Stats.FileDateModifiedChecksum == stats.FileDateModifiedChecksum
-                    && header.Stats.PathChecksum == stats.PathChecksum)
+                    && statsMatch)
                 {
                     items.reserve(header.NumItems);
                     OpenRCT2::DataSerialiser ds(false, fs);

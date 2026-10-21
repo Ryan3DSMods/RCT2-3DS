@@ -221,7 +221,9 @@ namespace OpenRCT2::Platform
     // Print a message, wait for START and end the process.
     [[noreturn]] void N3DSFatal(const char* message);
     // Show a 400x480 32-bit frame: rows 0-239 on the top screen, rows 240-479 (columns 40-359) on the bottom.
-    void N3DSPresentFrame(const uint32_t* pixels, int32_t pitchPixels, int32_t width, int32_t height, bool isRGBA);
+    void N3DSPresentFrame(
+        const uint32_t* pixels, int32_t pitchPixels, int32_t width, int32_t height, bool isRGBA, bool top = true,
+        bool bottom = true);
     struct N3DSExtraInput
     {
         int32_t cstickX;

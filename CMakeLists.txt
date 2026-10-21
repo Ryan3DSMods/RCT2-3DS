@@ -383,6 +383,9 @@ else ()
     if (NINTENDO_3DS)
         # A brand-new compiler on a brand-new platform: keep warnings visible but not fatal.
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error")
+        # The console is CPU bound in the software renderer: optimise for speed.
+        set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+        set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
         # arm-none-eabi defines int32_t as 'long int' (and uint32_t as 'long unsigned int'),
         # unlike every platform OpenRCT2 already runs on, where it is 'int'. Hundreds of call
         # sites rely on int32_t and int being the same type (std::clamp(int32_t, 0, 10) and

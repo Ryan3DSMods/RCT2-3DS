@@ -16,6 +16,7 @@
 #include <memory>
 #include <openrct2/Diagnostic.h>
 #include <openrct2/platform/Platform.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2/Game.h>
 #include <openrct2/config/Config.h>
 #include <openrct2/core/Guard.hpp>
@@ -43,6 +44,8 @@ private:
     SDL_Texture* _screenTexture = nullptr;
 #ifdef __3DS__
     bool _n3dsTextureIsRGBA = true;
+    int32_t _n3dsDirtyTop = INT32_MAX;
+    int32_t _n3dsDirtyBottom = INT32_MIN;
 #endif
     SDL_Texture* _scaledScreenTexture = nullptr;
     SDL_PixelFormat* _screenTextureFormat = nullptr;
@@ -234,6 +237,10 @@ public:
 protected:
     void OnDrawDirtyBlock(int32_t left, int32_t top, int32_t right, int32_t bottom) override
     {
+#ifdef __3DS__
+        _n3dsDirtyTop = std::min(_n3dsDirtyTop, top);
+        _n3dsDirtyBottom = std::max(_n3dsDirtyBottom, bottom);
+#endif
         if (gShowDirtyVisuals)
         {
             const auto columns = ((right - left) + (_invalidationGrid.getBlockWidth() - 1)) / _invalidationGrid.getBlockWidth();
@@ -274,15 +281,20 @@ private:
         }
 #ifdef __3DS__
         DrawSoftwareCursor();
-        // Present the 400x480 texture on both screens ourselves (SDL only knows the top one).
+        // Present the 400x480 texture on both screens ourselves (SDL only knows the top one), and only the
+        // screens that received new pixels this frame: converting and rotating both costs real time here.
         {
+            const bool topDirty = _n3dsDirtyTop < N3DS::kBottomScreenY || Platform::N3DSPointerVisible();
+            const bool bottomDirty = _n3dsDirtyBottom > N3DS::kBottomScreenY;
+            _n3dsDirtyTop = INT32_MAX;
+            _n3dsDirtyBottom = INT32_MIN;
             void* pixels;
             int32_t pitch;
-            if (SDL_LockTexture(_screenTexture, nullptr, &pixels, &pitch) == 0)
+            if ((topDirty || bottomDirty) && SDL_LockTexture(_screenTexture, nullptr, &pixels, &pitch) == 0)
             {
                 Platform::N3DSPresentFrame(
                     static_cast<const uint32_t*>(pixels), pitch / 4, static_cast<int32_t>(_width), static_cast<int32_t>(_height),
-                    _n3dsTextureIsRGBA);
+                    _n3dsTextureIsRGBA, topDirty, bottomDirty);
                 SDL_UnlockTexture(_screenTexture);
             }
         }

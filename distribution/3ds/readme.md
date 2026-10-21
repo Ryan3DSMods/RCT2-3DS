@@ -81,9 +81,10 @@ The graphics data files (`g2.dat` etc.) are produced by a native build of
 
 ## Known limitations
 
-* The first start builds the object index (a few minutes); later starts
-  validate it, which still takes a while on the SD card.
-* Loading a park takes around a minute (object loading is I/O bound).
+* The first start builds the object index (a few minutes). Later starts trust it;
+  delete the `.idx` files in `OpenRCT2/` after adding or removing objects or scenarios.
+* Loading a park takes a while (one or two file reads per object on the SD card).
+* Fully zoomed out, guests and staff are not drawn, to keep the frame rate up.
 * Windows larger than the screen are cut off at the right/bottom edge; B
   closes them.
 * No network, no scripting, no OpenGL, no TrueType fonts, no RCT1 graphics
