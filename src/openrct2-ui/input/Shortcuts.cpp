@@ -934,8 +934,10 @@ void ShortcutManager::registerDefaultShortcuts()
         { ShortcutId::kViewScrollDown, "JOY 8" },
         { ShortcutId::kViewGeneralZoomIn, "JOY 9" },               // R
         { ShortcutId::kViewGeneralZoomOut, "JOY 10" },             // L
-        { ShortcutId::kViewGeneralRotateClockwise, "JOY 16" },     // ZR (A clicks at the C-stick pointer)
-        { ShortcutId::kViewGeneralRotateAnticlockwise, "JOY 15" }, // ZL (Y right-clicks)
+        { ShortcutId::kViewGeneralRotateClockwise, "JOY 1" },      // A
+        { ShortcutId::kViewGeneralRotateAnticlockwise, "JOY 12" }, // Y
+        { ShortcutId::kViewGeneralRotateClockwise, "JOY 16" },     // ZR
+        { ShortcutId::kViewGeneralRotateAnticlockwise, "JOY 15" }, // ZL
         { ShortcutId::kInterfaceOpenMap, "JOY 11" },               // X
     };
     for (const auto& [id, chord] : k3DSButtonBindings)

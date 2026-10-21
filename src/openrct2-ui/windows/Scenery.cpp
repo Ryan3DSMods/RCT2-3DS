@@ -16,6 +16,7 @@
 #include <openrct2-ui/interface/Window.h>
 #include <openrct2-ui/windows/Windows.h>
 #include <openrct2/Context.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2/GameState.h>
 #include <openrct2/Input.h>
 #include <openrct2/OpenRCT2.h>
@@ -76,7 +77,11 @@ using OpenRCT2::GameActions::CommandFlag;
 namespace OpenRCT2::Ui::Windows
 {
     static constexpr StringId kWindowTitle = kStringIdNone;
+#ifdef __3DS__
+    static constexpr ScreenSize kMinimumWindowSize = { 320, 195 - kTitleHeightNormal };
+#else
     static constexpr ScreenSize kMinimumWindowSize = { 634, 195 - kTitleHeightNormal };
+#endif
     constexpr int32_t kSceneryButtonWidth = 66;
     constexpr int32_t kSceneryButtonHeight = 80;
     constexpr int32_t kDescriptionHeight = 24;
@@ -87,7 +92,11 @@ namespace OpenRCT2::Ui::Windows
     constexpr int32_t kTabHeight = 28;
     constexpr int32_t kReservedTabCount = 2;
     constexpr int32_t kMaxTabs = 257; // 255 selected tabs + misc + all
+#ifdef __3DS__
+    constexpr int32_t kMaxTabsPerRow = 9; // 284 px of tabs per row
+#else
     constexpr int32_t kMaxTabsPerRow = 20;
+#endif
 
     constexpr uint8_t kSceneryContentScrollIndex = 0;
 
@@ -273,7 +282,12 @@ namespace OpenRCT2::Ui::Windows
             }
             updatePressedTab();
 
+#ifdef __3DS__
+            WindowMovePosition(
+                *this, { N3DS::kBottomScreenRight - GetRequiredWidth(), N3DS::kBottomScreenY + kTopToolbarTotalHeight + 1 });
+#else
             WindowMovePosition(*this, { ContextGetWidth() - GetRequiredWidth(), 0x1D });
+#endif
             WindowPushOthersBelow(*this);
         }
 

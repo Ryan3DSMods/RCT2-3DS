@@ -37,7 +37,11 @@ using namespace OpenRCT2::Drawing;
 namespace OpenRCT2::Ui::Windows
 {
     static constexpr StringId kWindowTitle = kStringIdNone;
+#ifdef __3DS__
+    static constexpr ScreenSize kWindowSize = { 320, 183 };
+#else
     static constexpr ScreenSize kWindowSize = { 340, 240 };
+#endif
 
     enum
     {

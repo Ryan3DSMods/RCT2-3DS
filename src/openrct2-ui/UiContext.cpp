@@ -96,6 +96,7 @@ private:
 #ifdef __3DS__
     ScreenCoordsXY _lastTouchPosition = {};
 
+    static constexpr bool kUseCStickPointer = false;
     ScreenCoordsXY _stickPointer = { N3DS::kTopScreenWidth / 2, N3DS::kScreenHeight / 2 };
     int32_t _stickRemainderX = 0;
     int32_t _stickRemainderY = 0;
@@ -104,6 +105,9 @@ private:
     // A clicks and Y right-clicks at the pointer.
     void UpdateCStickPointer()
     {
+        // Disabled: the stick pointer got in the way of stylus use. Kept for a possible option later.
+        if (!kUseCStickPointer)
+            return;
         Platform::N3DSExtraInput input = Platform::N3DSPollExtraInput();
         constexpr int32_t kDeadZone = 24;
         if (std::abs(input.cstickX) > kDeadZone || std::abs(input.cstickY) > kDeadZone)

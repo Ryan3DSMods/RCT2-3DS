@@ -49,8 +49,8 @@ spans both; everything that has to be touched lives on the bottom screen.
 * Bottom screen: the toolbar (two rows) and all windows. Tap = click, two quick
   taps = right click. Keep the stylus still while tapping. Windows wider than the
   screen are cut off at the right edge; B closes them.
-* Circle pad / D-pad: scroll the view. L / R: zoom. ZL / ZR: rotate the view.
-* C-stick: moves a pointer (use it on the top screen); A clicks, Y right-clicks there.
+* Circle pad / D-pad: scroll the view. L / R: zoom. A / Y (or ZR / ZL): rotate the view.
+* Windows bigger than the screen can be dragged by their title bar to bring the rest into view.
 * X: map. B: close the top-most window. START: pause. SELECT: options.
   (All of these are ordinary shortcuts and can be changed in the options.)
 

@@ -8,6 +8,7 @@
  *****************************************************************************/
 
 #include "Window.h"
+#include <openrct2/platform/N3DSLayout.h>
 
 #include "../UiStringIds.h"
 #include "Widget.h"
@@ -875,9 +876,17 @@ namespace OpenRCT2::Ui::Windows
     void WindowMoveAndSnap(WindowBase& w, ScreenCoordsXY newWindowCoords, int32_t snapProximity)
     {
         auto originalPos = w.windowPos;
+#ifdef __3DS__
+        // Keep the title bar on the touch screen; the window may hang off its left, right or bottom
+        // edge so that parts of a window bigger than the screen can be dragged into view.
+        int32_t minY = N3DS::kBottomScreenY + (gLegacyScene == LegacyScene::titleSequence ? 1 : kTopToolbarTotalHeight + 2);
+        newWindowCoords.y = std::clamp(newWindowCoords.y, minY, N3DS::kBottomScreenBottom - 34);
+        newWindowCoords.x = std::clamp(newWindowCoords.x, N3DS::kBottomScreenX + 40 - w.width, N3DS::kBottomScreenRight - 40);
+#else
         int32_t minY = gLegacyScene == LegacyScene::titleSequence ? 1 : kTopToolbarTotalHeight + 2;
 
         newWindowCoords.y = std::clamp(newWindowCoords.y, minY, ContextGetHeight() - 34);
+#endif
 
         if (snapProximity > 0)
         {

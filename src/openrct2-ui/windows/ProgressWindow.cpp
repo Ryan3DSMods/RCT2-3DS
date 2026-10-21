@@ -12,6 +12,7 @@
 #include <openrct2-ui/interface/Window.h>
 #include <openrct2-ui/windows/Windows.h>
 #include <openrct2/Context.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2/SpriteIds.h>
 #include <openrct2/audio/Audio.h>
 #include <openrct2/drawing/Drawing.Sprite.h>
@@ -238,10 +239,18 @@ namespace OpenRCT2::Ui::Windows
         }
         else
         {
+#ifdef __3DS__
+            // Centred on the top screen (centring on the 400x480 virtual screen would straddle both).
+            window = windowMgr->Create<ProgressWindow>(
+                WindowClass::progressWindow,
+                ScreenCoordsXY((N3DS::kTopScreenWidth - kWindowSize.width) / 2, (N3DS::kScreenHeight - kWindowSize.height) / 2),
+                kWindowSize, { WindowFlag::higherContrastOnPress, WindowFlag::transparent, WindowFlag::stickToFront });
+#else
             window = windowMgr->Create<ProgressWindow>(
                 WindowClass::progressWindow, kWindowSize,
                 { WindowFlag::higherContrastOnPress, WindowFlag::transparent, WindowFlag::centreScreen,
                   WindowFlag::stickToFront });
+#endif
         }
 
         window->setCaption(text);

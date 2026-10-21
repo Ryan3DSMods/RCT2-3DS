@@ -50,9 +50,15 @@ namespace OpenRCT2::Ui::Windows
     static constexpr int32_t RideTabCount = 6;
     static constexpr int32_t GroupByTrackTypeWidth = 172;
     static constexpr int32_t kScrollItemSize = 116;
+#ifdef __3DS__
+    static constexpr int32_t kMinColCount = 2; // 253 px: fits the 320 px touch screen
+    static constexpr int32_t kMaxColCount = 2;
+    static constexpr int32_t kMinRowCount = 1;
+#else
     static constexpr int32_t kMinColCount = 5;
     static constexpr int32_t kMaxColCount = 15;
     static constexpr int32_t kMinRowCount = 2;
+#endif
     static constexpr int32_t kMaxRowCount = 7;
     static constexpr int32_t kHorizontalPadding = 21;
     static constexpr int32_t kVerticalPadding = 150;
