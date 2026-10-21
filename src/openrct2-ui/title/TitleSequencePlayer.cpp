@@ -152,6 +152,27 @@ namespace OpenRCT2::Title
                         auto& scenarioName = std::get<LoadScenarioCommand>(currentCommand).Scenario;
                         bool loadSuccess = false;
                         auto scenario = GetScenarioRepository()->GetByInternalName(scenarioName);
+#ifdef __3DS__
+                        // Localised RCT2 installs name the scenarios differently; the 3DS title sequence only
+                        // wants a small park, so fall back to the first RCT2 scenario (Electric Fields) by source
+                        // index, then to any small-looking scenario.
+                        if (scenario == nullptr)
+                        {
+                            auto* repo = GetScenarioRepository();
+                            for (size_t i = 0; i < repo->GetCount() && scenario == nullptr; i++)
+                            {
+                                auto* entry = repo->GetByIndex(i);
+                                if (entry != nullptr && entry->SourceGame == ScenarioSource::rct2 && entry->SourceIndex == 0)
+                                    scenario = entry;
+                            }
+                            for (size_t i = 0; i < repo->GetCount() && scenario == nullptr; i++)
+                            {
+                                auto* entry = repo->GetByIndex(i);
+                                if (entry != nullptr && entry->SourceGame == ScenarioSource::rct2)
+                                    scenario = entry;
+                            }
+                        }
+#endif
                         if (scenario != nullptr)
                         {
                             GameNotifyMapChange();
