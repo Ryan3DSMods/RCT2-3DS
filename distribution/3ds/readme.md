@@ -41,15 +41,21 @@ For sound, the DSP firmware must have been dumped once with the DSP1 homebrew
 
 ## Screens and controls
 
-* Top screen: the game at 400x240. The toolbar uses two rows.
-* Bottom screen: the touch screen is the mouse (tap = click, two quick taps =
-  right click) and shows the log while the port is young.
-* Circle pad / D-pad: scroll the view. L / R: zoom. A / Y: rotate the view.
+The game draws one 400x480 screen: the top half is the top screen, the bottom
+half is the touch screen (columns 40-359 of it are visible). The map viewport
+spans both; everything that has to be touched lives on the bottom screen.
+
+* Top screen: the park, with the money/guests and date bars along its bottom edge.
+* Bottom screen: the toolbar (two rows) and all windows. Tap = click, two quick
+  taps = right click. Keep the stylus still while tapping. Windows wider than the
+  screen are cut off at the right edge; B closes them.
+* Circle pad / D-pad: scroll the view. L / R: zoom. ZL / ZR: rotate the view.
+* C-stick: moves a pointer (use it on the top screen); A clicks, Y right-clicks there.
 * X: map. B: close the top-most window. START: pause. SELECT: options.
   (All of these are ordinary shortcuts and can be changed in the options.)
 
-Keep the stylus still while tapping: a tap registers where the stylus was
-last seen.
+The log is shown on the bottom screen while loading and then goes to
+`openrct2.log` only.
 
 ## Building
 
