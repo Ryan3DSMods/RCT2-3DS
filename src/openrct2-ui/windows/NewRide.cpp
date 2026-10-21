@@ -429,6 +429,19 @@ namespace OpenRCT2::Ui::Windows
             auto strWidth = getStringWidth(string, FontStyle::medium);
             auto localizedGroupByTrackTypeWidth = strWidth + 14;
             widgets[WIDX_GROUP_BY_TRACK_TYPE].left = width - 8 - localizedGroupByTrackTypeWidth;
+#ifdef __3DS__
+            // Narrow window: filter box + Clear on one row, the "group by" checkbox on the next.
+            widgets[WIDX_FILTER_TEXT_BOX].left = 4;
+            widgets[WIDX_FILTER_TEXT_BOX].right = width - 80;
+            widgets[WIDX_FILTER_CLEAR_BUTTON].left = width - 76;
+            widgets[WIDX_FILTER_CLEAR_BUTTON].right = width - 6;
+            widgets[WIDX_GROUP_BY_TRACK_TYPE].left = 4;
+            widgets[WIDX_GROUP_BY_TRACK_TYPE].right = width - 8;
+            widgets[WIDX_GROUP_BY_TRACK_TYPE].top = 63;
+            widgets[WIDX_GROUP_BY_TRACK_TYPE].bottom = 76;
+            if (!widgets[WIDX_GROUP_BY_TRACK_TYPE].isHidden())
+                widgets[WIDX_RIDE_LIST].top = 79;
+#endif
         }
 
         void onDraw(RenderTarget& rt) override

@@ -1265,6 +1265,10 @@ namespace OpenRCT2::Ui::Windows
 
                 if (firstItem && widgetIndex == WIDX_SEPARATOR)
                     continue;
+#ifdef __3DS__
+                if (widgetIndex == WIDX_SEPARATOR)
+                    continue; // no gaps between the buttons on the touch screen
+#endif
 
                 auto widgetWidth = widget.width() - 1;
                 widget.left = xPos;
@@ -1302,16 +1306,23 @@ namespace OpenRCT2::Ui::Windows
             }
 #endif
 
+#ifdef __3DS__
+            // Both rows centred on the touch screen, buttons packed without gaps.
+            auto rowWidth = [this](auto items) {
+                int32_t w = 0;
+                for (auto idx : items)
+                    if (idx != WIDX_SEPARATOR && widgets[idx].isVisible())
+                        w += widgets[idx].width();
+                return w;
+            };
+            AlignButtons(kWidgetOrderLeftGroup, std::max(0, (width - rowWidth(kWidgetOrderLeftGroup)) / 2), 0);
+            AlignButtons(kWidgetOrderRightGroup, std::max(0, (width - rowWidth(kWidgetOrderRightGroup)) / 2), 1);
+#else
             // Align left hand side toolbar buttons
             AlignButtons(kWidgetOrderLeftGroup, 0);
 
             // Align right hand side toolbar buttons
             auto totalWidth = GetToolbarWidth(kWidgetOrderRightGroup);
-#ifdef __3DS__
-            // Second row, left aligned like the first.
-            (void)totalWidth;
-            AlignButtons(kWidgetOrderRightGroup, 0, 1);
-#else
             auto xPos = width - totalWidth;
             AlignButtons(kWidgetOrderRightGroup, xPos);
 #endif

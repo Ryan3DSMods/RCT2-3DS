@@ -284,17 +284,22 @@ private:
         // Present the 400x480 texture on both screens ourselves (SDL only knows the top one), and only the
         // screens that received new pixels this frame: converting and rotating both costs real time here.
         {
-            const bool topDirty = _n3dsDirtyTop < N3DS::kBottomScreenY || Platform::N3DSPointerVisible();
-            const bool bottomDirty = _n3dsDirtyBottom > N3DS::kBottomScreenY;
+            int32_t dirtyTop = _n3dsDirtyTop;
+            int32_t dirtyBottom = _n3dsDirtyBottom;
+            if (Platform::N3DSPointerVisible())
+            {
+                dirtyTop = 0;
+                dirtyBottom = static_cast<int32_t>(_height);
+            }
             _n3dsDirtyTop = INT32_MAX;
             _n3dsDirtyBottom = INT32_MIN;
             void* pixels;
             int32_t pitch;
-            if ((topDirty || bottomDirty) && SDL_LockTexture(_screenTexture, nullptr, &pixels, &pitch) == 0)
+            if (dirtyTop < dirtyBottom && SDL_LockTexture(_screenTexture, nullptr, &pixels, &pitch) == 0)
             {
                 Platform::N3DSPresentFrame(
                     static_cast<const uint32_t*>(pixels), pitch / 4, static_cast<int32_t>(_width), static_cast<int32_t>(_height),
-                    _n3dsTextureIsRGBA, topDirty, bottomDirty);
+                    _n3dsTextureIsRGBA, dirtyTop, dirtyBottom);
                 SDL_UnlockTexture(_screenTexture);
             }
         }

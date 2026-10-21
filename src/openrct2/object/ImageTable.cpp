@@ -28,6 +28,7 @@
 #include "ObjectFactory.h"
 
 #include <cstdio>
+#include <map>
 #include <dirent.h>
 #include <unordered_map>
 #include <mutex>
@@ -290,30 +291,177 @@ namespace OpenRCT2
         return result;
     }
 
+#ifdef __3DS__
+    namespace
+    {
+        struct LegacyImageCacheEntry
+        {
+            std::vector<G1Element> images;
+            std::unique_ptr<uint8_t[]> data;
+        };
+        thread_local std::map<std::string, LegacyImageCacheEntry> _legacyImageCache;
+
+        struct CachedImageHeader
+        {
+            int16_t width, height, xOffset, yOffset;
+            uint16_t flags;
+            int32_t zoomedOffset;
+            uint32_t dataOffset;
+            uint32_t dataLength;
+        };
+        constexpr uint32_t kLegacyImageCacheMagic = 0x31494C4F; // "OLI1"
+
+        std::string LegacyImageCachePath(const std::string& name)
+        {
+            auto base = name;
+            auto dot = base.find('.');
+            if (dot != std::string::npos)
+                base.erase(dot);
+            return "/3ds/openrct2/OpenRCT2/cache/legacy/" + String::toUpper(base) + ".img";
+        }
+
+        LegacyImageCacheEntry* LegacyImageCacheGet(const std::string& name)
+        {
+            auto it = _legacyImageCache.find(name);
+            if (it != _legacyImageCache.end())
+                return &it->second;
+
+            FILE* f = std::fopen(LegacyImageCachePath(name).c_str(), "rb");
+            if (f == nullptr)
+                return nullptr;
+            std::setvbuf(f, nullptr, _IOFBF, 256 * 1024);
+            uint32_t magic = 0, count = 0, dataSize = 0;
+            bool ok = std::fread(&magic, 4, 1, f) == 1 && std::fread(&count, 4, 1, f) == 1 && std::fread(&dataSize, 4, 1, f) == 1
+                && magic == kLegacyImageCacheMagic && count < 100000 && dataSize < 64 * 1024 * 1024;
+            LegacyImageCacheEntry entry;
+            std::vector<CachedImageHeader> headers;
+            if (ok)
+            {
+                headers.resize(count);
+                entry.data = std::make_unique<uint8_t[]>(std::max<uint32_t>(dataSize, 1));
+                ok = (count == 0 || std::fread(headers.data(), sizeof(CachedImageHeader), count, f) == count)
+                    && (dataSize == 0 || std::fread(entry.data.get(), 1, dataSize, f) == dataSize);
+            }
+            std::fclose(f);
+            if (!ok)
+                return nullptr;
+            entry.images.reserve(count);
+            for (const auto& h : headers)
+            {
+                if (static_cast<uint64_t>(h.dataOffset) + h.dataLength > dataSize)
+                    return nullptr;
+                G1Element g1{};
+                g1.offset = entry.data.get() + h.dataOffset;
+                g1.width = h.width;
+                g1.height = h.height;
+                g1.xOffset = h.xOffset;
+                g1.yOffset = h.yOffset;
+                g1.flags.holder = h.flags;
+                g1.zoomedOffset = h.zoomedOffset;
+                entry.images.push_back(g1);
+            }
+            auto inserted = _legacyImageCache.emplace(name, std::move(entry));
+            return &inserted.first->second;
+        }
+
+        void LegacyImageCachePut(const std::string& name, const G1Element* images, int32_t numImages)
+        {
+            if (images == nullptr)
+                return;
+            Path::CreateDirectory("/3ds/openrct2/OpenRCT2/cache");
+            Path::CreateDirectory("/3ds/openrct2/OpenRCT2/cache/legacy");
+            auto path = LegacyImageCachePath(name);
+            auto tmpPath = path + ".tmp";
+            FILE* f = std::fopen(tmpPath.c_str(), "wb");
+            if (f == nullptr)
+                return;
+            std::setvbuf(f, nullptr, _IOFBF, 256 * 1024);
+            std::vector<CachedImageHeader> headers;
+            headers.reserve(numImages);
+            uint32_t dataSize = 0;
+            for (int32_t i = 0; i < numImages; i++)
+            {
+                const auto& g1 = images[i];
+                CachedImageHeader h{};
+                h.width = g1.width;
+                h.height = g1.height;
+                h.xOffset = g1.xOffset;
+                h.yOffset = g1.yOffset;
+                h.flags = g1.flags.holder;
+                h.zoomedOffset = g1.zoomedOffset;
+                h.dataOffset = dataSize;
+                h.dataLength = g1.offset != nullptr ? static_cast<uint32_t>(G1CalculateDataSize(&g1)) : 0;
+                dataSize += h.dataLength;
+                headers.push_back(h);
+            }
+            const uint32_t count = static_cast<uint32_t>(numImages);
+            bool ok = std::fwrite(&kLegacyImageCacheMagic, 4, 1, f) == 1 && std::fwrite(&count, 4, 1, f) == 1
+                && std::fwrite(&dataSize, 4, 1, f) == 1
+                && (count == 0 || std::fwrite(headers.data(), sizeof(CachedImageHeader), count, f) == count);
+            for (int32_t i = 0; ok && i < numImages; i++)
+            {
+                const auto& h = headers[i];
+                if (h.dataLength > 0)
+                    ok = std::fwrite(images[i].offset, 1, h.dataLength, f) == h.dataLength;
+            }
+            std::fclose(f);
+            if (ok)
+                std::rename(tmpPath.c_str(), path.c_str());
+            else
+                std::remove(tmpPath.c_str());
+        }
+    } // namespace
+#endif
+
     std::vector<std::unique_ptr<ImageTable::RequiredImage>> ImageTable::LoadObjectImages(
         IReadObjectContext* context, const std::string& name, const std::vector<int32_t>& range)
     {
         std::vector<std::unique_ptr<RequiredImage>> result;
-        Object* obj;
+        Object* obj = nullptr;
+        const G1Element* images = nullptr;
+        int32_t numImages = 0;
 
-        auto cached = _objDataCache.find(name);
-        if (cached != _objDataCache.end())
+#ifdef __3DS__
+        // Decoding the legacy .DAT twin of every JSON object is the slow part of loading a park on the
+        // console, so the decoded image table is cached on the SD card after the first time.
+        if (context->ShouldLoadImages())
         {
-            obj = cached->second.get();
+            auto* entry = LegacyImageCacheGet(name);
+            if (entry != nullptr)
+            {
+                images = entry->images.data();
+                numImages = static_cast<int32_t>(entry->images.size());
+            }
         }
-        else
+        if (images == nullptr)
+#endif
         {
-            auto objectPath = FindLegacyObject(name);
-            auto tmp = ObjectFactory::CreateObjectFromLegacyFile(objectPath.c_str(), context->ShouldLoadImages());
-            auto inserted = _objDataCache.insert({ name, std::move(tmp) });
-            obj = inserted.first->second.get();
+            auto cached = _objDataCache.find(name);
+            if (cached != _objDataCache.end())
+            {
+                obj = cached->second.get();
+            }
+            else
+            {
+                auto objectPath = FindLegacyObject(name);
+                auto tmp = ObjectFactory::CreateObjectFromLegacyFile(objectPath.c_str(), context->ShouldLoadImages());
+                auto inserted = _objDataCache.insert({ name, std::move(tmp) });
+                obj = inserted.first->second.get();
+            }
+            if (obj != nullptr)
+            {
+                auto& imgTable = static_cast<const Object*>(obj)->GetImageTable();
+                numImages = static_cast<int32_t>(imgTable.GetCount());
+                images = imgTable.GetImages();
+#ifdef __3DS__
+                if (context->ShouldLoadImages())
+                    LegacyImageCachePut(name, images, numImages);
+#endif
+            }
         }
 
-        if (obj != nullptr)
+        if (images != nullptr)
         {
-            auto& imgTable = static_cast<const Object*>(obj)->GetImageTable();
-            auto numImages = static_cast<int32_t>(imgTable.GetCount());
-            auto images = imgTable.GetImages();
             size_t placeHoldersAdded = 0;
             for (auto i : range)
             {
@@ -669,6 +817,9 @@ namespace OpenRCT2
         }
 
         _objDataCache.clear();
+#ifdef __3DS__
+        _legacyImageCache.clear();
+#endif
 
         return usesFallbackSprites;
     }
