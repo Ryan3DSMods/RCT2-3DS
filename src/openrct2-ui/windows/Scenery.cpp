@@ -1131,8 +1131,13 @@ namespace OpenRCT2::Ui::Windows
             // Fit *all* rows of tabs
             newMinHeight += static_cast<int32_t>(1 + (_tabEntries.size() / GetMaxTabCountInARow())) * kTabHeight;
 
+#ifdef __3DS__
+            // One row of scenery items: the touch screen is only 240 px tall, and the map must stay reachable.
+            newMinHeight += kSceneryButtonHeight;
+#else
             // And at least 1.5 rows of scenery items
             newMinHeight += 1.5 * kSceneryButtonHeight;
+#endif
 
             return newMinHeight;
         }

@@ -50,7 +50,8 @@ spans both; everything that has to be touched lives on the bottom screen.
   taps = right click. Keep the stylus still while tapping. Windows wider than the
   screen are cut off at the right edge; B closes them.
 * Circle pad / D-pad: scroll the view. L / R: zoom. A / Y (or ZR / ZL): rotate the view.
-* Windows bigger than the screen can be dragged by their title bar to bring the rest into view.
+* Windows bigger than the screen can be dragged by their title bar to bring the rest into view,
+  and tool windows (scenery, paths, land) can be dragged down to uncover the map while placing.
 * X: map. B: close the top-most window. START: pause. SELECT: options.
   (All of these are ordinary shortcuts and can be changed in the options.)
 
