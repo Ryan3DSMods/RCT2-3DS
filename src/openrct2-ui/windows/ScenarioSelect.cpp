@@ -143,6 +143,9 @@ namespace OpenRCT2::Ui::Windows
         std::function<void(std::string_view)> _callback;
         std::vector<ScenarioListItem> _listItems;
         const ScenarioIndexEntry* _highlightedScenario = nullptr;
+#ifdef __3DS__
+        const ScenarioIndexEntry* _pendingScenario = nullptr;
+#endif
         ParkPreview _preview;
         BackgroundWorker::Job _previewLoadJob;
 
@@ -352,7 +355,18 @@ namespace OpenRCT2::Ui::Windows
             }
 
 #ifdef __3DS__
-            // No preview pane on the 3DS.
+            // No preview pane on the 3DS; a status line at the bottom instead.
+            {
+                std::string line = _pendingScenario != nullptr
+                    ? "Tap \"" + std::string(_pendingScenario->Name) + "\" again to start it (loading takes a while)"
+                    : "Tap a scenario to select it, tap it again to start";
+                auto ft = Formatter();
+                ft.Add<StringId>(STR_STRING);
+                ft.Add<const char*>(line.c_str());
+                drawTextEllipsised(
+                    rt, windowPos + ScreenCoordsXY{ kTabWidth + 3, height - 13 }, width - kTabWidth - 6, STR_STRINGID, ft,
+                    { colours[1] });
+            }
             return;
 #endif
             auto previewPaneWidth = GetPreviewPaneWidth();
@@ -451,7 +465,11 @@ namespace OpenRCT2::Ui::Windows
 
         void onPrepareDraw() override
         {
+#ifdef __3DS__
+            const int32_t bottomMargin = 17; // room for the "tap again to start" line
+#else
             const int32_t bottomMargin = Config::Get().general.debuggingTools ? 17 : 5;
+#endif
             widgets[WIDX_SCENARIOLIST].right = width - GetPreviewPaneWidth() - 2 * kPadding;
             widgets[WIDX_SCENARIOLIST].bottom = height - bottomMargin;
         }
@@ -542,6 +560,17 @@ namespace OpenRCT2::Ui::Windows
                         if (mutableScreenCoords.y < 0 && !listItem.scenario.is_locked)
                         {
                             OpenRCT2::Audio::Play(Audio::SoundId::click1, 0, windowPos.x + (width / 2));
+#ifdef __3DS__
+                            // Loading takes a while on the console: the first tap selects, a second tap on the
+                            // same scenario starts it.
+                            if (_pendingScenario != listItem.scenario.scenario)
+                            {
+                                _pendingScenario = listItem.scenario.scenario;
+                                _highlightedScenario = _pendingScenario;
+                                invalidate();
+                                return;
+                            }
+#endif
                             gFirstTimeSaving = true;
                             // Callback will likely close this window! So should always return after it.
                             _callback(listItem.scenario.scenario->Path);

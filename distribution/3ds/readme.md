@@ -83,7 +83,9 @@ The graphics data files (`g2.dat` etc.) are produced by a native build of
 
 * The first start builds the object index (a few minutes). Later starts trust it;
   delete the `.idx` files in `OpenRCT2/` after adding or removing objects or scenarios.
-* Loading a park takes a while (one or two file reads per object on the SD card).
+* Loading a park takes a while (a file read per object on the SD card). Decoded legacy
+  object images are cached under `OpenRCT2/cache/legacy/` after the first load.
+* In the scenario list, the first tap selects a scenario and a second tap starts it.
 * Fully zoomed out, guests and staff are not drawn, to keep the frame rate up.
 * Windows larger than the screen are cut off at the right/bottom edge; B
   closes them.

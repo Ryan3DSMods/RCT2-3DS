@@ -323,6 +323,9 @@ namespace OpenRCT2::Platform
             gfxSetScreenFormat(GFX_BOTTOM, GSP_RGBA8_OES);
             gfxSetDoubleBuffering(GFX_TOP, false);
             gfxSetDoubleBuffering(GFX_BOTTOM, false);
+            // The new format only reaches the display with a swap.
+            gfxScreenSwapBuffers(GFX_TOP, false);
+            gfxScreenSwapBuffers(GFX_BOTTOM, false);
         }
         // Rows 0-239 belong to the top screen, rows 240-479 to the bottom one.
         CopyToScreen(GFX_TOP, pixels, pitchPixels, 0, 0, N3DS::kTopScreenWidth, dirtyTop, dirtyBottom, isRGBA);
