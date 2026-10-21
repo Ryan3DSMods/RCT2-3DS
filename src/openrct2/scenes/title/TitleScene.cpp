@@ -364,6 +364,18 @@ void TitleSequenceChangePreset(size_t preset)
 
 size_t TitleGetConfigSequence()
 {
+#ifdef __3DS__
+    // The stock sequences load the biggest parks in the game (Six Flags Magic Mountain), which takes minutes
+    // on the console and most of its memory. Prefer the small "3ds" sequence from data/sequence/3ds.parkseq
+    // whenever the configuration still points at a stock one.
+    const auto& preset = Config::Get().interface.currentTitleSequencePreset;
+    if (preset.empty() || preset[0] == '*')
+    {
+        auto index = TitleSequenceManager::GetIndexForConfigID("3ds");
+        if (index != SIZE_MAX)
+            return index;
+    }
+#endif
     return TitleSequenceManager::GetIndexForConfigID(Config::Get().interface.currentTitleSequencePreset.c_str());
 }
 

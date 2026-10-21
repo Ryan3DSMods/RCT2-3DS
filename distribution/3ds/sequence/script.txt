@@ -1,0 +1,21 @@
+# OpenRCT2 title sequence for the Nintendo 3DS port: a small park that loads quickly
+# and leaves memory for the game. Replace with any scenario you like (LOADSC <scenario name>).
+
+LOADSC Electric Fields
+
+LOCATION 40 40
+WAIT 9600
+
+ROTATE 1
+LOCATION 48 44
+WAIT 9600
+
+ROTATE 1
+LOCATION 36 52
+WAIT 9600
+
+ROTATE 1
+LOCATION 44 36
+WAIT 9600
+
+RESTART

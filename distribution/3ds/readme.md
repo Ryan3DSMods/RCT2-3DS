@@ -26,7 +26,10 @@ sdmc:/3ds/openrct2/openrct2.log      copy of everything printed on the bottom sc
 
 `data/` must contain `g2.dat`, `fonts.dat`, `palettes.dat`, `tracks.dat`,
 `language/`, `scenario_patches/`, `object/`, `sequence/` and `assetpack/`
-(the same files a desktop install ships in `share/openrct2`).
+(the same files a desktop install ships in `share/openrct2`). Put
+`3ds.parkseq` from `distribution/3ds/` into `data/sequence/` as well: it is a
+small title sequence (one small park) that the port prefers over the stock
+ones, which load the largest parks in the game and take minutes on the console.
 
 `rct2/` is a copy of the RCT2 game folder with its `Data`, `ObjData`,
 `Scenarios`, `Landscapes` and `Tracks` sub-folders. Only the files are read;
