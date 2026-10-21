@@ -22,6 +22,7 @@
 #include "../core/Json.hpp"
 #include "../core/MemoryStream.h"
 #include "../core/Path.hpp"
+#include "../platform/Platform.h"
 #include "../core/String.hpp"
 #include "../core/Zip.h"
 #include "../sawyer_coding/SawyerChunkReader.h"
@@ -49,6 +50,7 @@
 #include "WallObject.h"
 #include "WaterObject.h"
 
+#include <cstdio>
 #include <memory>
 #include <unordered_map>
 

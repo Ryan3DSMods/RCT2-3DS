@@ -20,12 +20,17 @@
 #include "../core/IStream.hpp"
 #include "../core/Json.hpp"
 #include "../core/Path.hpp"
+#include "../platform/Platform.h"
 #include "../core/String.hpp"
 #include "../drawing/Drawing.Sprite.h"
 #include "../drawing/ImageImporter.h"
 #include "Object.h"
 #include "ObjectFactory.h"
 
+#include <cstdio>
+#include <dirent.h>
+#include <unordered_map>
+#include <mutex>
 #include <memory>
 #include <stdexcept>
 
@@ -383,6 +388,44 @@ namespace OpenRCT2
     {
         const auto& env = GetContext()->GetPlatformEnvironment();
         auto objectsPath = env.GetDirectoryPath(DirBase::rct2, DirId::objects);
+#ifdef __3DS__
+        // Every filesystem call costs tens of milliseconds on the console, so the ObjData folder is listed
+        // once and looked up by (upper-case) file name from then on.
+        {
+            static std::mutex cacheMutex;
+            static std::string cachedRoot;
+            static std::unordered_map<std::string, std::string> cache;
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            if (cachedRoot != objectsPath)
+            {
+                cache.clear();
+                // readdir only: a stat per file (what the generic scanner does) costs a minute here.
+                if (DIR* dir = opendir(objectsPath.c_str()))
+                {
+                    while (dirent* entry = readdir(dir))
+                    {
+                        std::string fileName = entry->d_name;
+                        auto upper = String::toUpper(fileName);
+                        if (upper.size() > 4 && (upper.ends_with(".DAT") || upper.ends_with(".POB")))
+                            cache.emplace(upper, Path::Combine(objectsPath, fileName));
+                    }
+                    closedir(dir);
+                }
+                cachedRoot = objectsPath;
+            }
+            auto it = cache.find(String::toUpper(name));
+            if (it == cache.end())
+            {
+                auto pobName = name;
+                auto ext = pobName.find(".DAT");
+                if (ext != std::string::npos)
+                    pobName.replace(ext, 4, ".POB");
+                it = cache.find(String::toUpper(pobName));
+            }
+            if (it != cache.end())
+                return it->second;
+        }
+#endif
         auto objectPath = Path::Combine(objectsPath, name);
         if (File::Exists(objectPath))
         {

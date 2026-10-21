@@ -20,6 +20,10 @@ JobPool::TaskData::TaskData(std::function<void()> workFn, std::function<void()> 
 JobPool::JobPool(size_t maxThreads)
 {
     maxThreads = std::min<size_t>(maxThreads, std::max(1u, std::thread::hardware_concurrency()));
+#ifdef __3DS__
+    // Same-priority threads on one 3DS core only switch at blocking calls; SD card loads go faster one at a time.
+    maxThreads = 1;
+#endif
     for (size_t n = 0; n < maxThreads; n++)
     {
         _threads.emplace_back(&JobPool::ProcessQueue, this);

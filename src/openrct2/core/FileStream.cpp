@@ -114,7 +114,7 @@ namespace OpenRCT2
         // Every stdio refill is an IPC round-trip to the FS service; newlib's default 1 KiB
         // buffer makes reading a 1 MiB object a thousand of them.
         if (_file != nullptr)
-            setvbuf(_file, nullptr, _IOFBF, 64 * 1024);
+            setvbuf(_file, nullptr, _IOFBF, 256 * 1024);
 #endif
 #endif
         if (_file == nullptr)
