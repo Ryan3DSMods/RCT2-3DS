@@ -13,6 +13,7 @@
 #include <openrct2-ui/windows/Windows.h>
 #include <cstdio>
 #include <openrct2/Context.h>
+#include <openrct2/localisation/LocalisationService.h>
 #include <openrct2/platform/Platform.h>
 #include <openrct2/Diagnostic.h>
 #include <openrct2/Game.h>
@@ -160,6 +161,12 @@ namespace OpenRCT2::Title
                         if (scenario == nullptr)
                         {
                             auto* repo = GetScenarioRepository();
+                            if (repo->GetCount() == 0)
+                            {
+                                std::printf("[title] scenario list is empty, scanning\n");
+                                repo->Scan(LocalisationService_GetCurrentLanguage());
+                            }
+                            std::printf("[title] %u scenarios known\n", static_cast<unsigned>(repo->GetCount()));
                             uint64_t smallest = UINT64_MAX;
                             for (size_t i = 0; i < repo->GetCount(); i++)
                             {
@@ -167,7 +174,9 @@ namespace OpenRCT2::Title
                                 if (entry == nullptr)
                                     continue;
                                 auto size = Platform::GetFileSize(entry->Path);
-                                if (size > 0 && size < smallest)
+                                if (size == 0)
+                                    size = UINT64_MAX - 1; // unknown size: only if nothing else
+                                if (size < smallest)
                                 {
                                     smallest = size;
                                     scenario = entry;

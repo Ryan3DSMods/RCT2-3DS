@@ -314,7 +314,12 @@ bool TitleScene::TryLoadSequence(bool loadPreview)
                     Drawing::GfxInvalidateScreen();
                     return true;
                 }
+#ifdef __3DS__
+                // Never fall back to the other sequences: they load the largest parks in the game.
+                break;
+#else
                 targetSequence = (targetSequence + 1) % numSequences;
+#endif
             } while (targetSequence != _currentSequence && !loadPreview);
         }
         Console::Error::WriteLine("Unable to play any title sequences.");
