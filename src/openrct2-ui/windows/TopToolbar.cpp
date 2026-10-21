@@ -8,6 +8,7 @@
  *****************************************************************************/
 
 #include "../UiContext.h"
+#include <openrct2/platform/N3DSLayout.h>
 #include "../interface/InGameConsole.h"
 #include "../scripting/CustomMenu.h"
 
@@ -1095,6 +1096,15 @@ namespace OpenRCT2::Ui::Windows
             widgets[WIDX_ZOOM_IN].setVisible(config.toolbarShowZoom);
             widgets[WIDX_ZOOM_OUT].setVisible(config.toolbarShowZoom);
             widgets[WIDX_ROTATE_ANTI_CLOCKWISE].setVisible(config.toolbarShowRotateAnticlockwise);
+#ifdef __3DS__
+            // Two rows of ten 30 px buttons fit the 320 px touch screen. Y rotates the other way,
+            // research lives in the finances window, and the clear-scenery tool is dropped.
+            widgets[WIDX_MUTE].setHidden();
+            widgets[WIDX_ROTATE_ANTI_CLOCKWISE].setHidden();
+            widgets[WIDX_RESEARCH].setHidden();
+            widgets[WIDX_NEWS].setHidden();
+            widgets[WIDX_CLEAR_SCENERY].setHidden();
+#endif
 
             const bool hasPauseButton = !(
                 gLegacyScene == LegacyScene::scenarioEditor || gLegacyScene == LegacyScene::trackDesignsManager);
@@ -1274,6 +1284,15 @@ namespace OpenRCT2::Ui::Windows
 
         void AlignButtonsLeftRight()
         {
+#ifdef __3DS__
+            if (windowPos.x != N3DS::kBottomScreenX || windowPos.y != N3DS::kBottomScreenY || width != N3DS::kBottomScreenWidth)
+            {
+                invalidate();
+                windowPos = { N3DS::kBottomScreenX, N3DS::kBottomScreenY };
+                width = N3DS::kBottomScreenWidth;
+                invalidate();
+            }
+#else
             if (windowPos.x != 0)
             {
                 invalidate();
@@ -1281,6 +1300,7 @@ namespace OpenRCT2::Ui::Windows
                 width = ContextGetWidth();
                 invalidate();
             }
+#endif
 
             // Align left hand side toolbar buttons
             AlignButtons(kWidgetOrderLeftGroup, 0);
@@ -1288,9 +1308,9 @@ namespace OpenRCT2::Ui::Windows
             // Align right hand side toolbar buttons
             auto totalWidth = GetToolbarWidth(kWidgetOrderRightGroup);
 #ifdef __3DS__
-            // Second row, right aligned (left aligned if it is wider than the screen).
-            auto xPos = std::max(0, width - totalWidth);
-            AlignButtons(kWidgetOrderRightGroup, xPos, 1);
+            // Second row, left aligned like the first.
+            (void)totalWidth;
+            AlignButtons(kWidgetOrderRightGroup, 0, 1);
 #else
             auto xPos = width - totalWidth;
             AlignButtons(kWidgetOrderRightGroup, xPos);
@@ -1480,7 +1500,12 @@ namespace OpenRCT2::Ui::Windows
     {
         auto* windowMgr = GetWindowManager();
         auto* window = windowMgr->Create<TopToolbar>(
+#ifdef __3DS__
+            WindowClass::topToolbar, ScreenCoordsXY(N3DS::kBottomScreenX, N3DS::kBottomScreenY),
+            { N3DS::kBottomScreenWidth, kTopToolbarTotalHeight + 1 },
+#else
             WindowClass::topToolbar, ScreenCoordsXY(0, 0), { ContextGetWidth(), kTopToolbarTotalHeight + 1 },
+#endif
             { WindowFlag::stickToFront, WindowFlag::transparent, WindowFlag::noBackground, WindowFlag::noTitleBar });
 
         window->setWidgets(_topToolbarWidgets);

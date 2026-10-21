@@ -15,6 +15,7 @@
 #include <cmath>
 #include <memory>
 #include <openrct2/Diagnostic.h>
+#include <openrct2/platform/Platform.h>
 #include <openrct2/Game.h>
 #include <openrct2/config/Config.h>
 #include <openrct2/core/Guard.hpp>
@@ -40,6 +41,9 @@ private:
     SDL_Window* _window = nullptr;
     SDL_Renderer* _sdlRenderer = nullptr;
     SDL_Texture* _screenTexture = nullptr;
+#ifdef __3DS__
+    bool _n3dsTextureIsRGBA = true;
+#endif
     SDL_Texture* _scaledScreenTexture = nullptr;
     SDL_PixelFormat* _screenTextureFormat = nullptr;
     uint32_t _paletteHWMapped[256] = { 0 };
@@ -137,6 +141,7 @@ public:
         {
             uint32_t windowFormat = SDL_GetWindowPixelFormat(_window);
             pixelFormat = (SDL_BYTESPERPIXEL(windowFormat) == 4) ? windowFormat : SDL_PIXELFORMAT_ARGB8888;
+            _n3dsTextureIsRGBA = pixelFormat == SDL_PIXELFORMAT_RGBA8888;
         }
 #endif
 
@@ -269,6 +274,19 @@ private:
         }
 #ifdef __3DS__
         DrawSoftwareCursor();
+        // Present the 400x480 texture on both screens ourselves (SDL only knows the top one).
+        {
+            void* pixels;
+            int32_t pitch;
+            if (SDL_LockTexture(_screenTexture, nullptr, &pixels, &pitch) == 0)
+            {
+                Platform::N3DSPresentFrame(
+                    static_cast<const uint32_t*>(pixels), pitch / 4, static_cast<int32_t>(_width), static_cast<int32_t>(_height),
+                    _n3dsTextureIsRGBA);
+                SDL_UnlockTexture(_screenTexture);
+            }
+        }
+        return;
 #endif
         if (smoothNN)
         {

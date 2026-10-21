@@ -14,6 +14,7 @@
 #include <openrct2-ui/interface/Window.h>
 #include <openrct2-ui/windows/Windows.h>
 #include <openrct2/Context.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2/Diagnostic.h>
 #include <openrct2/FileClassifier.h>
 #include <openrct2/ParkImporter.h>
@@ -57,7 +58,7 @@ namespace OpenRCT2::Ui::Windows
 #ifdef __3DS__
     // 400x240 screen: full-screen window, tighter tabs, no preview pane.
     static constexpr int32_t kTabHeight = 26;
-    static constexpr ScreenSize kWindowSize = { 400, 240 };
+    static constexpr ScreenSize kWindowSize = { N3DS::kBottomScreenWidth, N3DS::kScreenHeight };
 #else
     static constexpr int32_t kTabHeight = 34;
     static constexpr ScreenSize kWindowSize = { 734, 384 };
@@ -897,7 +898,8 @@ namespace OpenRCT2::Ui::Windows
         }
 
 #ifdef __3DS__
-        window = windowMgr->Create<ScenarioSelectWindow>(WindowClass::scenarioSelect, { 0, 0 }, kWindowSize, {}, callback);
+        window = windowMgr->Create<ScenarioSelectWindow>(
+            WindowClass::scenarioSelect, { N3DS::kBottomScreenX, N3DS::kBottomScreenY }, kWindowSize, {}, callback);
 #else
         window = windowMgr->Create<ScenarioSelectWindow>(
             WindowClass::scenarioSelect, {}, kWindowSize, { WindowFlag::autoPosition, WindowFlag::centreScreen }, callback);

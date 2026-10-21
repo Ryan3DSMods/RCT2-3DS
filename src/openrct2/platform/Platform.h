@@ -220,6 +220,16 @@ namespace OpenRCT2::Platform
     void N3DSLogMemory(const char* tag);
     // Print a message, wait for START and end the process.
     [[noreturn]] void N3DSFatal(const char* message);
+    // Show a 400x480 32-bit frame: rows 0-239 on the top screen, rows 240-479 (columns 40-359) on the bottom.
+    void N3DSPresentFrame(const uint32_t* pixels, int32_t pitchPixels, int32_t width, int32_t height, bool isRGBA);
+    struct N3DSExtraInput
+    {
+        int32_t cstickX;
+        int32_t cstickY;
+        bool aPressed, aReleased, yPressed, yReleased;
+    };
+    // C-stick position and A/Y edges (read after SDL has pumped the HID state this frame).
+    N3DSExtraInput N3DSPollExtraInput();
 #endif
 
     bool IsRunningInWine();

@@ -11,6 +11,7 @@
 #include <openrct2-ui/interface/Window.h>
 #include <openrct2-ui/windows/Windows.h>
 #include <openrct2/Context.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2/ui/WindowManager.h>
 
 namespace OpenRCT2::Ui::Windows
@@ -60,7 +61,12 @@ namespace OpenRCT2::Ui::Windows
         if (window == nullptr)
         {
             window = windowMgr->Create<TitleOptionsWindow>(
-                WindowClass::titleOptions, ScreenCoordsXY(ContextGetWidth() - 80, 0), kWindowSize,
+                WindowClass::titleOptions,
+#ifdef __3DS__
+                ScreenCoordsXY(N3DS::kBottomScreenRight - 80, N3DS::kBottomScreenY), kWindowSize,
+#else
+                ScreenCoordsXY(ContextGetWidth() - 80, 0), kWindowSize,
+#endif
                 { WindowFlag::stickToBack, WindowFlag::transparent, WindowFlag::noTitleBar });
         }
 

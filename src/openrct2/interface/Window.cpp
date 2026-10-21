@@ -8,6 +8,7 @@
  *****************************************************************************/
 
 #include "Window.h"
+#include "../platform/N3DSLayout.h"
 
 #include "../Context.h"
 #include "../Game.h"
@@ -745,23 +746,28 @@ static constexpr float kWindowScrollLocations[][2] = {
         if (topWind != nullptr)
         {
 #ifdef __3DS__
-            topWind->width = width;
+            topWind->width = N3DS::kBottomScreenWidth;
 #else
             topWind->width = std::max(640, width);
 #endif
         }
 
+#ifdef __3DS__
+        const int32_t panelBottom = N3DS::kScreenHeight; // the info panels sit at the bottom of the top screen
+#else
+        const int32_t panelBottom = height;
+#endif
         WindowBase* parkInfoPanel = windowMgr->FindByClass(WindowClass::parkInfoPanel);
         if (parkInfoPanel != nullptr)
         {
-            parkInfoPanel->windowPos.y = height - 32;
+            parkInfoPanel->windowPos.y = panelBottom - 32;
         }
 
         WindowBase* dateInfoPanel = windowMgr->FindByClass(WindowClass::dateInfoPanel);
         if (dateInfoPanel != nullptr)
         {
             dateInfoPanel->windowPos.x = width - dateInfoPanel->width;
-            dateInfoPanel->windowPos.y = height - 32;
+            dateInfoPanel->windowPos.y = panelBottom - 32;
         }
 
 #ifdef __3DS__
@@ -781,7 +787,7 @@ static constexpr float kWindowScrollLocations[][2] = {
         {
             statusBar->width = bottomWidth;
             statusBar->windowPos.x = bottomOffset;
-            statusBar->windowPos.y = height - 32;
+            statusBar->windowPos.y = panelBottom - 32;
         }
 
         WindowBase* newsTicker = windowMgr->FindByClass(WindowClass::newsTicker);
@@ -809,19 +815,34 @@ static constexpr float kWindowScrollLocations[][2] = {
 
         WindowBase* versionWind = windowMgr->FindByClass(WindowClass::titleVersion);
         if (versionWind != nullptr)
+        {
             versionWind->windowPos.y = height - 30;
+#ifdef __3DS__
+            versionWind->windowPos.x = N3DS::kBottomScreenX + 5;
+#endif
+        }
 
         WindowBase* exitWind = windowMgr->FindByClass(WindowClass::titleExit);
         if (exitWind != nullptr)
         {
+#ifdef __3DS__
+            exitWind->windowPos.x = N3DS::kBottomScreenRight - 40;
+            exitWind->windowPos.y = N3DS::kBottomScreenBottom - 64;
+#else
             exitWind->windowPos.x = width - 40;
             exitWind->windowPos.y = height - 64;
+#endif
         }
 
         WindowBase* optionsWind = windowMgr->FindByClass(WindowClass::titleOptions);
         if (optionsWind != nullptr)
         {
+#ifdef __3DS__
+            optionsWind->windowPos.x = N3DS::kBottomScreenRight - 80;
+            optionsWind->windowPos.y = N3DS::kBottomScreenY;
+#else
             optionsWind->windowPos.x = width - 80;
+#endif
         }
     }
 

@@ -25,6 +25,7 @@
     #include "../core/String.hpp"
     #include "../localisation/Language.h"
     #include "Platform.h"
+#include "N3DSLayout.h"
 #include "../core/Memory.hpp"
 
     #include <3ds.h>
@@ -114,6 +115,7 @@ int __wrap_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (
 namespace OpenRCT2::Platform
 {
     static constexpr const utf8* kUserRoot = "/3ds/openrct2";
+    static bool _consoleTakenOver = false;
     static constexpr const utf8* kSdDataPath = "/3ds/openrct2/data";
     static constexpr const utf8* kRct2Path = "/3ds/openrct2/rct2";
     static constexpr const utf8* kRct1Path = "/3ds/openrct2/rct1";
@@ -125,6 +127,11 @@ namespace OpenRCT2::Platform
 
     static void WaitForStart()
     {
+        // Make sure the message is visible even after the game took over the bottom screen.
+        _consoleTakenOver = false;
+        gfxSetScreenFormat(GFX_BOTTOM, GSP_RGB565_OES);
+        gfxSetDoubleBuffering(GFX_BOTTOM, false);
+        consoleClear();
         std::printf("Press START to return to the Homebrew Launcher.\n");
         while (true)
         {
@@ -242,7 +249,66 @@ namespace OpenRCT2::Platform
             std::fflush(_logFile);
             _atLineStart = len > 0 && ptr[len - 1] == '\n';
         }
+        if (_consoleTakenOver)
+            return static_cast<ssize_t>(len); // the bottom screen now shows the game
         return _consoleDevoptab->write_r(r, fd, ptr, len);
+    }
+
+    static void CopyToScreen(
+        gfxScreen_t screen, const uint32_t* pixels, int32_t pitchPixels, int32_t srcX, int32_t srcY, int32_t screenWidth,
+        bool isRGBA)
+    {
+        u16 fbWidth = 0, fbHeight = 0; // 240 x (400|320): the framebuffer is stored column by column
+        u8* fb = gfxGetFramebuffer(screen, GFX_LEFT, &fbWidth, &fbHeight);
+        if (fb == nullptr)
+            return;
+        auto* dst = reinterpret_cast<uint32_t*>(fb);
+        for (int32_t x = 0; x < screenWidth; x++)
+        {
+            uint32_t* column = dst + x * N3DS::kScreenHeight;
+            const uint32_t* src = pixels + srcY * pitchPixels + srcX + x;
+            for (int32_t y = 0; y < N3DS::kScreenHeight; y++)
+            {
+                uint32_t p = src[y * pitchPixels];
+                if (!isRGBA)
+                    p = (p << 8) | 0xFF; // ARGB -> RGBA
+                column[N3DS::kScreenHeight - 1 - y] = p;
+            }
+        }
+    }
+
+    N3DSExtraInput N3DSPollExtraInput()
+    {
+        N3DSExtraInput result{};
+        circlePosition pos{};
+        hidCstickRead(&pos);
+        result.cstickX = pos.dx;
+        result.cstickY = pos.dy;
+        const u32 down = hidKeysDown();
+        const u32 up = hidKeysUp();
+        result.aPressed = (down & KEY_A) != 0;
+        result.aReleased = (up & KEY_A) != 0;
+        result.yPressed = (down & KEY_Y) != 0;
+        result.yReleased = (up & KEY_Y) != 0;
+        return result;
+    }
+
+    void N3DSPresentFrame(const uint32_t* pixels, int32_t pitchPixels, int32_t width, int32_t height, bool isRGBA)
+    {
+        if (width < N3DS::kVirtualWidth || height < N3DS::kVirtualHeight)
+            return;
+        if (!_consoleTakenOver)
+        {
+            _consoleTakenOver = true;
+            // The console switched the bottom screen to 16-bit single buffering.
+            gfxSetScreenFormat(GFX_BOTTOM, GSP_RGBA8_OES);
+            gfxSetDoubleBuffering(GFX_BOTTOM, true);
+        }
+        CopyToScreen(GFX_TOP, pixels, pitchPixels, 0, 0, N3DS::kTopScreenWidth, isRGBA);
+        CopyToScreen(GFX_BOTTOM, pixels, pitchPixels, N3DS::kBottomScreenX, N3DS::kBottomScreenY, N3DS::kBottomScreenWidth, isRGBA);
+        gfxFlushBuffers();
+        gfxScreenSwapBuffers(GFX_TOP, false);
+        gfxScreenSwapBuffers(GFX_BOTTOM, false);
     }
 
     void N3DSConsoleInit()

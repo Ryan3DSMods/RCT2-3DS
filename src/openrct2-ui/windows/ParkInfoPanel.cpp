@@ -11,6 +11,7 @@
 #include <openrct2-ui/interface/Window.h>
 #include <openrct2-ui/windows/Windows.h>
 #include <openrct2/Context.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2/Game.h>
 #include <openrct2/GameState.h>
 #include <openrct2/Input.h>
@@ -24,6 +25,15 @@ using namespace OpenRCT2::Drawing;
 
 namespace OpenRCT2::Ui::Windows
 {
+    static int32_t kPanelBaseline()
+    {
+#ifdef __3DS__
+        return N3DS::kScreenHeight; // bottom of the top screen
+#else
+        return ContextGetHeight();
+#endif
+    }
+
     constexpr auto kPanelWidth = 142;
 
     enum ParkInfoPanelWidgetIdx : WidgetIndex
@@ -193,7 +203,7 @@ namespace OpenRCT2::Ui::Windows
 
             // Reset dimensions as appropriate -- in case we're switching languages.
             height = line_height * 2 + 12;
-            windowPos.y = ContextGetHeight() - height;
+            windowPos.y = kPanelBaseline() - height;
 
             // Change height of widgets in accordance with line height.
             // TODO: replace offset to full width with window size/position
@@ -256,7 +266,7 @@ namespace OpenRCT2::Ui::Windows
 
         auto* windowMgr = GetWindowManager();
         auto* window = windowMgr->Create<ParkInfoPanel>(
-            WindowClass::parkInfoPanel, ScreenCoordsXY(0, ContextGetHeight() - panelHeight), { kPanelWidth, panelHeight },
+            WindowClass::parkInfoPanel, ScreenCoordsXY(0, kPanelBaseline() - panelHeight), { kPanelWidth, panelHeight },
             { WindowFlag::stickToFront, WindowFlag::transparent, WindowFlag::noBackground, WindowFlag::noTitleBar });
 
         return window;

@@ -21,7 +21,9 @@
 #include <openrct2-ui/input/MouseInput.h>
 #include <openrct2-ui/input/ShortcutManager.h>
 #include <openrct2-ui/windows/Windows.h>
+#include <algorithm>
 #include <openrct2/Context.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2/GameState.h>
 #include <openrct2/OpenRCT2.h>
 #include <openrct2/audio/Audio.h>
@@ -760,12 +762,22 @@ public:
         ScreenSize screenSize = { uiContext.GetWidth(), uiContext.GetHeight() };
 
         // Place window in an empty corner of the screen
+#ifdef __3DS__
+        const int32_t uiTop = N3DS::kBottomScreenY + kTopToolbarTotalHeight + 2;
+        const ScreenCoordsXY cornerPositions[] = {
+            { N3DS::kBottomScreenX, uiTop },
+            { N3DS::kBottomScreenRight - windowSize.width, uiTop },
+            { N3DS::kBottomScreenX, N3DS::kBottomScreenBottom - windowSize.height },
+            { N3DS::kBottomScreenRight - windowSize.width, N3DS::kBottomScreenBottom - windowSize.height },
+        };
+#else
         const ScreenCoordsXY cornerPositions[] = {
             { 0, 30 },                                                                           // topLeft
             { screenSize.width - windowSize.width, 30 },                                         // topRight
             { 0, screenSize.height - 34 - windowSize.height },                                   // bottomLeft
             { screenSize.width - windowSize.width, screenSize.height - 34 - windowSize.height }, // bottomRight
         };
+#endif
 
         for (const auto& cornerPos : cornerPositions)
         {
@@ -922,6 +934,19 @@ public:
                 }
             }
         }
+
+#ifdef __3DS__
+        // Everything that can be touched has to be on the bottom screen: columns 40-359 of rows 240-479,
+        // below the toolbar in game. Wider or taller windows keep their top-left corner (and tabs) visible.
+        if (!flags.hasAny(WindowFlag::stickToBack, WindowFlag::stickToFront) && cls != WindowClass::dropdown
+            && cls != WindowClass::tooltip && cls != WindowClass::error)
+        {
+            const int32_t top = gLegacyScene == LegacyScene::titleSequence ? N3DS::kBottomScreenY + 1
+                                                                             : N3DS::kBottomScreenY + kTopToolbarTotalHeight + 1;
+            pos.x = std::clamp(pos.x, N3DS::kBottomScreenX, std::max(N3DS::kBottomScreenX, N3DS::kBottomScreenRight - windowSize.width));
+            pos.y = std::clamp(pos.y, top, std::max(top, N3DS::kBottomScreenBottom - windowSize.height));
+        }
+#endif
 
         // Setup window
         wp->classification = cls;

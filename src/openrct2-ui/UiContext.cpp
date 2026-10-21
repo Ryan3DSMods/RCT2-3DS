@@ -32,6 +32,7 @@
 #include <openrct2/Context.h>
 #ifdef __3DS__
     #include <openrct2/platform/Platform.h>
+#include <openrct2/platform/N3DSLayout.h>
 #endif
 #include <openrct2/Diagnostic.h>
 #include <openrct2/Input.h>
@@ -94,6 +95,62 @@ private:
     CursorState _cursorState = {};
 #ifdef __3DS__
     ScreenCoordsXY _lastTouchPosition = {};
+
+    ScreenCoordsXY _stickPointer = { N3DS::kTopScreenWidth / 2, N3DS::kScreenHeight / 2 };
+    int32_t _stickRemainderX = 0;
+    int32_t _stickRemainderY = 0;
+
+    // The C-stick moves a pointer (mostly useful on the top screen, which cannot be touched);
+    // A clicks and Y right-clicks at the pointer.
+    void UpdateCStickPointer()
+    {
+        Platform::N3DSExtraInput input = Platform::N3DSPollExtraInput();
+        constexpr int32_t kDeadZone = 24;
+        if (std::abs(input.cstickX) > kDeadZone || std::abs(input.cstickY) > kDeadZone)
+        {
+            _stickRemainderX += input.cstickX;
+            _stickRemainderY -= input.cstickY;
+            _stickPointer.x = std::clamp(_stickPointer.x + _stickRemainderX / 12, 0, N3DS::kVirtualWidth - 1);
+            _stickPointer.y = std::clamp(_stickPointer.y + _stickRemainderY / 12, 0, N3DS::kVirtualHeight - 1);
+            _stickRemainderX %= 12;
+            _stickRemainderY %= 12;
+            _cursorState.position = _stickPointer;
+            _lastTouchPosition = _stickPointer;
+        }
+        if (input.aPressed)
+        {
+            _cursorState.position = _stickPointer;
+            StoreMouseInput(MouseState::leftPress, _stickPointer);
+            _cursorState.left = CURSOR_PRESSED;
+            _cursorState.old = 1;
+        }
+        if (input.aReleased)
+        {
+            StoreMouseInput(MouseState::leftRelease, _stickPointer);
+            _cursorState.left = CURSOR_RELEASED;
+            _cursorState.old = 3;
+        }
+        if (input.yPressed)
+        {
+            _cursorState.position = _stickPointer;
+            StoreMouseInput(MouseState::rightPress, _stickPointer);
+            _cursorState.right = CURSOR_PRESSED;
+            _cursorState.old = 2;
+        }
+        if (input.yReleased)
+        {
+            StoreMouseInput(MouseState::rightRelease, _stickPointer);
+            _cursorState.right = CURSOR_RELEASED;
+            _cursorState.old = 4;
+        }
+    }
+
+    // The touch screen shows the bottom half of the virtual screen (columns 40-359 of rows 240-479).
+    static ScreenCoordsXY TouchToScreen(float nx, float ny)
+    {
+        return { static_cast<int32_t>(nx * N3DS::kBottomScreenWidth) + N3DS::kBottomScreenX,
+                 static_cast<int32_t>(ny * N3DS::kScreenHeight) + N3DS::kBottomScreenY };
+    }
 #endif
     uint32_t _lastKeyPressed = 0;
     const uint8_t* _keysState = nullptr;
@@ -504,18 +561,23 @@ public:
                 // Apple sends touchscreen events for trackpads, so ignore these events on macOS
 #ifndef __MACOSX__
                 case SDL_FINGERMOTION:
+#ifdef __3DS__
+                    _cursorState.position = TouchToScreen(e.tfinger.x, e.tfinger.y);
+                    _lastTouchPosition = _cursorState.position;
+#else
                     _cursorState.position = { static_cast<int32_t>(e.tfinger.x * _width),
                                               static_cast<int32_t>(e.tfinger.y * _height) };
-#ifdef __3DS__
-                    _lastTouchPosition = _cursorState.position;
 #endif
                     break;
                 case SDL_FINGERDOWN:
                 {
+#ifdef __3DS__
+                    ScreenCoordsXY fingerPos = TouchToScreen(e.tfinger.x, e.tfinger.y);
+                    _lastTouchPosition = fingerPos;
+                    _cursorState.position = fingerPos;
+#else
                     ScreenCoordsXY fingerPos = { static_cast<int32_t>(e.tfinger.x * _width),
                                                  static_cast<int32_t>(e.tfinger.y * _height) };
-#ifdef __3DS__
-                    _lastTouchPosition = fingerPos;
 #endif
 
                     _cursorState.touchIsDouble
@@ -624,6 +686,9 @@ public:
             }
         }
 
+#ifdef __3DS__
+        UpdateCStickPointer();
+#endif
         _cursorState.any = _cursorState.left | _cursorState.middle | _cursorState.right;
 
         // Updates the state of the keys
@@ -851,10 +916,10 @@ private:
 #ifdef __3DS__
         // The top screen is exactly 400x240; SDL's 3DS backend does not scale. Pin the config
         // too, so nothing later re-applies a stored size, scale or fullscreen mode.
-        width = 400;
-        height = 240;
-        Config::Get().general.windowWidth = 400;
-        Config::Get().general.windowHeight = 240;
+        width = N3DS::kVirtualWidth;
+        height = N3DS::kVirtualHeight;
+        Config::Get().general.windowWidth = width;
+        Config::Get().general.windowHeight = height;
         Config::Get().general.windowScale = 1.0f;
         Config::Get().general.fullscreenMode = 0;
         Config::Get().general.inferDisplayDPI = false;

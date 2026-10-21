@@ -12,6 +12,7 @@
 #include <openrct2-ui/interface/Window.h>
 #include <openrct2-ui/windows/Windows.h>
 #include <openrct2/Context.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2/GameState.h>
 #include <openrct2/OpenRCT2.h>
 #include <openrct2/drawing/Rectangle.h>
@@ -24,6 +25,15 @@ using namespace OpenRCT2::Drawing;
 
 namespace OpenRCT2::Ui::Windows
 {
+    static int32_t kPanelBaseline()
+    {
+#ifdef __3DS__
+        return N3DS::kScreenHeight; // bottom of the top screen
+#else
+        return ContextGetHeight();
+#endif
+    }
+
     enum GameStatusBarWidgetIdx : WidgetIndex
     {
         WIDX_PANEL_OUTSET,
@@ -100,7 +110,7 @@ namespace OpenRCT2::Ui::Windows
 
             // Reset dimensions as appropriate -- in case we're switching languages.
             height = line_height * 2 + 12;
-            windowPos.y = ContextGetHeight() - height;
+            windowPos.y = kPanelBaseline() - height;
 
             // Change height of widgets in accordance with line height.
             widgets[WIDX_PANEL_OUTSET].bottom = line_height * 3 + 3;
@@ -163,7 +173,7 @@ namespace OpenRCT2::Ui::Windows
 
         auto* windowMgr = GetWindowManager();
         auto* window = windowMgr->Create<GameStatusBar>(
-            WindowClass::gameStatusBar, ScreenCoordsXY(kPanelWidth, ContextGetHeight() - toolbarHeight),
+            WindowClass::gameStatusBar, ScreenCoordsXY(kPanelWidth, kPanelBaseline() - toolbarHeight),
             { toolbarWidth, toolbarHeight },
             { WindowFlag::stickToFront, WindowFlag::transparent, WindowFlag::noBackground, WindowFlag::noTitleBar });
 

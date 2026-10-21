@@ -10,6 +10,7 @@
 #include <openrct2-ui/interface/Window.h>
 #include <openrct2-ui/windows/Windows.h>
 #include <openrct2/Context.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2/Version.h>
 #include <openrct2/drawing/Drawing.String.h>
 #include <openrct2/drawing/Text.h>
@@ -45,7 +46,12 @@ namespace OpenRCT2::Ui::Windows
         if (window == nullptr)
         {
             window = windowMgr->Create<TitleVersionWindow>(
-                WindowClass::titleVersion, ScreenCoordsXY(kTextOffset, ContextGetHeight() - 30), kWindowSize,
+                WindowClass::titleVersion,
+#ifdef __3DS__
+                ScreenCoordsXY(N3DS::kBottomScreenX + kTextOffset, N3DS::kBottomScreenBottom - 30), kWindowSize,
+#else
+                ScreenCoordsXY(kTextOffset, ContextGetHeight() - 30), kWindowSize,
+#endif
                 { WindowFlag::stickToBack, WindowFlag::transparent, WindowFlag::noTitleBar });
         }
         return window;

@@ -13,6 +13,7 @@
 #include <openrct2-ui/interface/Objective.h>
 #include <openrct2-ui/interface/Theme.h>
 #include <openrct2-ui/interface/Widget.h>
+#include <openrct2/platform/N3DSLayout.h>
 #include <openrct2-ui/interface/Window.h>
 #include <openrct2-ui/windows/Windows.h>
 #include <openrct2/GameState.h>
@@ -1329,7 +1330,8 @@ namespace OpenRCT2::Ui::Windows
             wnd->windowPos.y = ContextGetHeight() / 2 - 87;
 #ifdef __3DS__
             // Keep the title bar below the (two-row) toolbar on the 240 px screen.
-            wnd->windowPos.y = std::max<int32_t>(wnd->windowPos.y, kTopToolbarTotalHeight + 1);
+            wnd->windowPos.x = std::max<int32_t>(wnd->windowPos.x, N3DS::kBottomScreenX);
+            wnd->windowPos.y = std::max<int32_t>(wnd->windowPos.y, N3DS::kBottomScreenY + kTopToolbarTotalHeight + 1);
 #endif
             wnd->invalidate();
         }
