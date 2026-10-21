@@ -12,6 +12,8 @@
 #include <memory>
 #include <openrct2-ui/windows/Windows.h>
 #include <cstdio>
+#include <openrct2/PlatformEnvironment.h>
+#include <dirent.h>
 #include <openrct2/Context.h>
 #include <openrct2/localisation/LocalisationService.h>
 #include <openrct2/platform/Platform.h>
@@ -167,6 +169,43 @@ namespace OpenRCT2::Title
                                 repo->Scan(LocalisationService_GetCurrentLanguage());
                             }
                             std::printf("[title] %u scenarios known\n", static_cast<unsigned>(repo->GetCount()));
+                            if (repo->GetCount() == 0)
+                            {
+                                // Show what the console can see in the scenario folders.
+                                const auto& env = GetContext()->GetPlatformEnvironment();
+                                for (auto base : { DirBase::rct1, DirBase::rct2, DirBase::user })
+                                {
+                                    auto dirPath = env.GetDirectoryPath(base, DirId::scenarios);
+                                    DIR* dir = opendir(dirPath.c_str());
+                                    if (dir == nullptr)
+                                    {
+                                        std::printf("[title] %s: cannot open\n", dirPath.c_str());
+                                        continue;
+                                    }
+                                    int count = 0;
+                                    std::string examples;
+                                    while (dirent* e = readdir(dir))
+                                    {
+                                        if (e->d_name[0] == '.')
+                                            continue;
+                                        if (count < 3)
+                                            examples += std::string(" ") + e->d_name;
+                                        count++;
+                                    }
+                                    closedir(dir);
+                                    std::printf("[title] %s: %d entries%s\n", dirPath.c_str(), count, examples.c_str());
+                                }
+                                auto rct2Root = env.GetDirectoryPath(DirBase::rct2);
+                                if (DIR* dir = opendir(rct2Root.c_str()))
+                                {
+                                    std::string names;
+                                    while (dirent* e = readdir(dir))
+                                        if (e->d_name[0] != '.')
+                                            names += std::string(" ") + e->d_name;
+                                    closedir(dir);
+                                    std::printf("[title] %s contains:%s\n", rct2Root.c_str(), names.c_str());
+                                }
+                            }
                             uint64_t smallest = UINT64_MAX;
                             for (size_t i = 0; i < repo->GetCount(); i++)
                             {
