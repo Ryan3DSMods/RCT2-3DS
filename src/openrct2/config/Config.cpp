@@ -198,6 +198,14 @@ namespace OpenRCT2::Config
             model->fullscreenWidth = reader->GetInt32("fullscreen_width", -1);
             model->rct1Path = reader->GetString("rct1_path", "");
             model->rct2Path = reader->GetString("game_path", "");
+#ifdef __3DS__
+            // Early builds stored device-prefixed paths ("sdmc:/..."), which the file scanners cannot use.
+            for (auto* path : { &model->rct1Path, &model->rct2Path })
+            {
+                if (path->rfind("sdmc:", 0) == 0)
+                    path->erase(0, 5);
+            }
+#endif
             model->landscapeSmoothing = reader->GetBoolean("landscape_smoothing", true);
             model->language = reader->GetEnum<int32_t>("language", Platform::GetLocaleLanguage(), Enum_LanguageEnum);
             model->measurementFormat = reader->GetEnum<MeasurementFormat>(
