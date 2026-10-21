@@ -792,7 +792,11 @@ static constexpr float kWindowScrollLocations[][2] = {
         if (titleWind != nullptr)
         {
             titleWind->windowPos.x = (width - titleWind->width) / 2;
+#ifdef __3DS__
+            titleWind->windowPos.y = height - 140;
+#else
             titleWind->windowPos.y = height - 182;
+#endif
         }
 
         WindowBase* versionWind = windowMgr->FindByClass(WindowClass::titleVersion);

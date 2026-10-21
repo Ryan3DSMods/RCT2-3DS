@@ -126,6 +126,9 @@ namespace OpenRCT2::Ui::Windows
         void onMouseUp(WidgetIndex widgetIndex) override
         {
             auto* windowMgr = GetWindowManager();
+#ifdef __3DS__
+            std::printf("[title menu] mouse up on widget %d\n", static_cast<int>(widgetIndex));
+#endif
 
             switch (widgetIndex)
             {
@@ -280,8 +283,15 @@ namespace OpenRCT2::Ui::Windows
         const uint16_t windowHeight = kMenuButtonDims.height + kUpdateButtonDims.height;
 
         auto* windowMgr = GetWindowManager();
+#ifdef __3DS__
+        // 400x240: buttons just above the version text (keep in sync with WindowResizeGuiTitleScreen).
+        return windowMgr->Create<TitleMenuWindow>(
+            WindowClass::titleMenu, ScreenCoordsXY(0, ContextGetHeight() - 140), { 0, windowHeight },
+            { WindowFlag::transparent, WindowFlag::noBackground, WindowFlag::noTitleBar });
+#else
         return windowMgr->Create<TitleMenuWindow>(
             WindowClass::titleMenu, ScreenCoordsXY(0, ContextGetHeight() - 182), { 0, windowHeight },
             { WindowFlag::stickToBack, WindowFlag::transparent, WindowFlag::noBackground, WindowFlag::noTitleBar });
+#endif
     }
 } // namespace OpenRCT2::Ui::Windows

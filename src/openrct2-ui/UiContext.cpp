@@ -22,6 +22,7 @@
 #include "title/TitleSequencePlayer.h"
 
 #include <SDL.h>
+#include <cstdio>
 #include <cmath>
 #include <cstdlib>
 #include <memory>
@@ -91,6 +92,9 @@ private:
     ShortcutManager _shortcutManager;
     TextComposition _textComposition;
     CursorState _cursorState = {};
+#ifdef __3DS__
+    ScreenCoordsXY _lastTouchPosition = {};
+#endif
     uint32_t _lastKeyPressed = 0;
     const uint8_t* _keysState = nullptr;
     uint8_t _keysPressed[256] = {};
@@ -127,7 +131,7 @@ public:
             SDLException::Throw("SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK)");
         }
 #ifdef __3DS__
-        // The game runs on the bottom (touch) screen; the top screen shows the log.
+        // The game runs on the top screen; the bottom (touch) screen shows the log.
         Platform::N3DSConsoleInit();
 #endif
         _cursorRepository.LoadCursors();
@@ -406,6 +410,14 @@ public:
                     }
                     break;
                 case SDL_MOUSEMOTION:
+#ifdef __3DS__
+                    // The touch screen already drives the cursor through the finger events; SDL's synthetic
+                    // mouse motion jumps to (0,0) when the stylus is lifted.
+                    if (e.motion.which == SDL_TOUCH_MOUSEID)
+                    {
+                        break;
+                    }
+#endif
                     _cursorState.position = { static_cast<int32_t>(e.motion.x / Config::Get().general.windowScale),
                                               static_cast<int32_t>(e.motion.y / Config::Get().general.windowScale) };
                     break;
@@ -494,11 +506,18 @@ public:
                 case SDL_FINGERMOTION:
                     _cursorState.position = { static_cast<int32_t>(e.tfinger.x * _width),
                                               static_cast<int32_t>(e.tfinger.y * _height) };
+#ifdef __3DS__
+                    _lastTouchPosition = _cursorState.position;
+#endif
                     break;
                 case SDL_FINGERDOWN:
                 {
                     ScreenCoordsXY fingerPos = { static_cast<int32_t>(e.tfinger.x * _width),
                                                  static_cast<int32_t>(e.tfinger.y * _height) };
+#ifdef __3DS__
+                    _lastTouchPosition = fingerPos;
+                    std::printf("[input] finger down %d,%d\n", fingerPos.x, fingerPos.y);
+#endif
 
                     _cursorState.touchIsDouble
                         = (!_cursorState.touchIsDouble
@@ -522,8 +541,16 @@ public:
                 }
                 case SDL_FINGERUP:
                 {
+#ifdef __3DS__
+                    // The 3DS reports (0,0) once the stylus is lifted; release where it was last seen so the
+                    // press and the release land on the same widget.
+                    ScreenCoordsXY fingerPos = _lastTouchPosition;
+                    _cursorState.position = fingerPos;
+                    std::printf("[input] finger up %d,%d\n", fingerPos.x, fingerPos.y);
+#else
                     ScreenCoordsXY fingerPos = { static_cast<int32_t>(e.tfinger.x * _width),
                                                  static_cast<int32_t>(e.tfinger.y * _height) };
+#endif
 
                     if (_cursorState.touchIsDouble)
                     {
@@ -638,8 +665,10 @@ public:
 
         // Set window position to default display
 #ifdef __3DS__
-        // SDL display 0 is the top screen, display 1 the bottom (touch) screen.
-        int32_t defaultDisplay = 1;
+        // SDL display 0 is the top screen (400x240), display 1 the bottom (touch) screen. The game
+        // is shown on the top screen; the touch screen acts as an absolute touchpad for it (SDL
+        // maps touch coordinates onto the window) and a software cursor marks the position.
+        int32_t defaultDisplay = 0;
 #else
         int32_t defaultDisplay = std::clamp(Config::Get().general.defaultDisplay, 0, 0xFFFF);
 #endif
@@ -822,9 +851,15 @@ private:
         if (height <= 0)
             height = 720;
 #ifdef __3DS__
-        // The bottom screen is exactly 320x240; SDL's 3DS backend does not scale.
-        width = 320;
+        // The top screen is exactly 400x240; SDL's 3DS backend does not scale. Pin the config
+        // too, so nothing later re-applies a stored size, scale or fullscreen mode.
+        width = 400;
         height = 240;
+        Config::Get().general.windowWidth = 400;
+        Config::Get().general.windowHeight = 240;
+        Config::Get().general.windowScale = 1.0f;
+        Config::Get().general.fullscreenMode = 0;
+        Config::Get().general.inferDisplayDPI = false;
 #endif
 
         // Create window in window first rather than fullscreen so we have the display the window is on first

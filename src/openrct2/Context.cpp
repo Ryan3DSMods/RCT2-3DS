@@ -365,6 +365,10 @@ namespace OpenRCT2
                 Config::Get().general.lastRunVersion = kOpenRCT2Version;
                 Config::Save();
             }
+#ifdef __3DS__
+            // No changelog file is shipped on the SD card, and the window would cover the title menu.
+            gOpenRCT2ShowChangelog = false;
+#endif
 
             try
             {
@@ -792,7 +796,13 @@ namespace OpenRCT2
                 OpenProgress(asScenario ? STR_LOADING_SCENARIO : STR_LOADING_SAVED_GAME);
                 SetProgress(0, 100, STR_STRING_M_PERCENT);
 
+#ifdef __3DS__
+                std::printf("[park] reading %s\n", path.c_str());
+#endif
                 auto result = parkImporter->LoadFromStream(stream, info.Type == FileType::scenario, false, path.c_str());
+#ifdef __3DS__
+                std::printf("[park] read\n");
+#endif
                 SetProgress(10, 100, STR_STRING_M_PERCENT);
 
                 // From this point onwards the currently loaded park will be corrupted if loading fails
@@ -801,12 +811,18 @@ namespace OpenRCT2
 
                 GameUnloadScripts();
                 _objectManager->LoadObjects(result.RequiredObjects, true);
+#ifdef __3DS__
+                std::printf("[park] objects loaded\n");
+#endif
                 SetProgress(90, 100, STR_STRING_M_PERCENT);
 
                 MapAnimations::ClearAll();
                 // TODO: Have a separate GameState and exchange once loaded.
                 auto& gameState = ::getGameState();
                 parkImporter->Import(gameState);
+#ifdef __3DS__
+                std::printf("[park] imported\n");
+#endif
                 SetProgress(100, 100, STR_STRING_M_PERCENT);
 
                 // Reset viewport rendering inhibition

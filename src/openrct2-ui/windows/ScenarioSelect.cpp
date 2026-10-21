@@ -54,12 +54,18 @@ namespace OpenRCT2::Ui::Windows
     static constexpr uint8_t kPadding = 5;
     static constexpr int32_t kPreviewPaneWidthRegular = 180;
     static constexpr int32_t kPreviewPaneWidthScreenshots = 254;
+#ifdef __3DS__
+    // 400x240 screen: full-screen window, tighter tabs, no preview pane.
+    static constexpr int32_t kTabHeight = 26;
+    static constexpr ScreenSize kWindowSize = { 400, 240 };
+#else
     static constexpr int32_t kTabHeight = 34;
+    static constexpr ScreenSize kWindowSize = { 734, 384 };
+#endif
     static constexpr int32_t kWidgetsStart = 17;
     static constexpr int32_t kTabsStart = kWidgetsStart;
     static constexpr int32_t kTabWidth = 92;
     static constexpr int32_t kTrueFontSize = 24;
-    static constexpr ScreenSize kWindowSize = { 734, 384 };
     static constexpr StringId kWindowTitle = STR_SELECT_SCENARIO;
 
     enum class ListItemType : uint8_t
@@ -114,7 +120,7 @@ namespace OpenRCT2::Ui::Windows
     // clang-format off
     static constexpr auto _scenarioSelectWidgets = makeWidgets(
         makeWindowShim(kWindowTitle, kWindowSize),
-        makeWidget({ kTabWidth + 1, kWidgetsStart }, { kWindowSize.width, 284 },         WidgetType::resize, WindowColour::secondary                     ), // tab content panel
+        makeWidget({ kTabWidth + 1, kWidgetsStart }, { kWindowSize.width, kWindowSize.height - kWidgetsStart - 1 }, WidgetType::resize, WindowColour::secondary), // tab content panel
         makeRemapWidget({ 3, kTabsStart + (kTabHeight * 0) }, { kTabWidth, kTabHeight }, WidgetType::tab,    WindowColour::secondary, SPR_G2_SIDEWAYS_TAB), // tab 01
         makeRemapWidget({ 3, kTabsStart + (kTabHeight * 1) }, { kTabWidth, kTabHeight }, WidgetType::tab,    WindowColour::secondary, SPR_G2_SIDEWAYS_TAB), // tab 02
         makeRemapWidget({ 3, kTabsStart + (kTabHeight * 2) }, { kTabWidth, kTabHeight }, WidgetType::tab,    WindowColour::secondary, SPR_G2_SIDEWAYS_TAB), // tab 03
@@ -125,7 +131,7 @@ namespace OpenRCT2::Ui::Windows
         makeRemapWidget({ 3, kTabsStart + (kTabHeight * 7) }, { kTabWidth, kTabHeight }, WidgetType::tab,    WindowColour::secondary, SPR_G2_SIDEWAYS_TAB), // tab 08
         makeRemapWidget({ 3, kTabsStart + (kTabHeight * 8) }, { kTabWidth, kTabHeight }, WidgetType::tab,    WindowColour::secondary, SPR_G2_SIDEWAYS_TAB), // tab 09
         makeRemapWidget({ 3, kTabsStart + (kTabHeight * 8) }, { kTabWidth, kTabHeight }, WidgetType::tab,    WindowColour::secondary, SPR_G2_SIDEWAYS_TAB), // tab 10
-        makeWidget({ kTabWidth + 3, kWidgetsStart + 1 }, { kWindowSize.width - kPreviewPaneWidthRegular, 362 }, WidgetType::scroll, WindowColour::secondary, SCROLL_VERTICAL    ) // level list
+        makeWidget({ kTabWidth + 3, kWidgetsStart + 1 }, { kWindowSize.width - kPreviewPaneWidthRegular, kWindowSize.height - kWidgetsStart - 6 }, WidgetType::scroll, WindowColour::secondary, SCROLL_VERTICAL) // level list
     );
     // clang-format on
 
@@ -197,6 +203,10 @@ namespace OpenRCT2::Ui::Windows
 
         int32_t GetPreviewPaneWidth() const
         {
+#ifdef __3DS__
+            // No room for the preview pane; the list takes the whole width.
+            return 0;
+#endif
             if (Config::Get().interface.scenarioPreviewScreenshots)
                 return kPreviewPaneWidthScreenshots;
             else
@@ -340,6 +350,10 @@ namespace OpenRCT2::Ui::Windows
                     rt, stringCoords, 87, format, ft, { Drawing::Colour::lightWater, fontStyle, TextAlignment::centre });
             }
 
+#ifdef __3DS__
+            // No preview pane on the 3DS.
+            return;
+#endif
             auto previewPaneWidth = GetPreviewPaneWidth();
 
             // Return if no scenario highlighted

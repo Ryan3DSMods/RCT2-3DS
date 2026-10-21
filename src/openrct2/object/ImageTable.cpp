@@ -408,7 +408,9 @@ namespace OpenRCT2
             auto scanner = Path::scanDirectory(filter, true);
             while (scanner->next())
             {
-                auto currentName = Path::GetFileName(scanner->getPathRelative());
+                // Only the file name is compared; getPathRelative() would canonicalise every
+                // path (several filesystem calls per file), which is very slow on some platforms.
+                auto currentName = Path::GetFileName(scanner->getPath());
                 if (String::iequals(currentName, name) || String::iequals(currentName, altName))
                 {
                     objectPath = scanner->getPath();

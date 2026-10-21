@@ -9,6 +9,9 @@
 
 #include "ObjectManager.h"
 
+#include "../platform/Platform.h"
+#include <cstdio>
+
 #include "../Context.h"
 #include "../Diagnostic.h"
 #include "../ParkImporter.h"
@@ -625,7 +628,15 @@ namespace OpenRCT2
             auto loadSingleObject = [&](const ObjectRepositoryItem* requiredObject) {
                 // Object requires to be loaded, if the object successfully loads it will register it
                 // as a loaded object otherwise placed into the badObjects list.
+#ifdef __3DS__
+                auto loadStart = Platform::GetTicks();
+#endif
                 auto newObject = _objectRepository.LoadObject(requiredObject);
+#ifdef __3DS__
+                auto loadMs = Platform::GetTicks() - loadStart;
+                if (loadMs > 300)
+                    std::printf("[slow object] %s: %u ms\n", requiredObject->Path.c_str(), static_cast<unsigned>(loadMs));
+#endif
 
                 std::lock_guard<std::mutex> guard(commonMutex);
                 if (newObject == nullptr)

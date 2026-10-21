@@ -188,23 +188,33 @@ namespace OpenRCT2::Platform
 
     // Everything printed to the top-screen console is also appended to a log file on the SD
     // card, so a run can be reported without photographing the screen.
+    static u64 _startTime = 0;
     static const devoptab_t* _consoleDevoptab = nullptr;
     static devoptab_t _teeDevoptab;
     static FILE* _logFile = nullptr;
+
+    static bool _atLineStart = true;
 
     static ssize_t TeeWrite(struct _reent* r, void* fd, const char* ptr, size_t len)
     {
         if (_logFile != nullptr)
         {
+            // Prefix each line in the log file with the time since start, in milliseconds.
+            if (_atLineStart)
+            {
+                std::fprintf(_logFile, "[%8lu] ", static_cast<unsigned long>(osGetTime() - _startTime));
+            }
             std::fwrite(ptr, 1, len, _logFile);
             std::fflush(_logFile);
+            _atLineStart = len > 0 && ptr[len - 1] == '\n';
         }
         return _consoleDevoptab->write_r(r, fd, ptr, len);
     }
 
     void N3DSConsoleInit()
     {
-        consoleInit(GFX_TOP, nullptr);
+        consoleInit(GFX_BOTTOM, nullptr);
+        _startTime = osGetTime();
         _logFile = std::fopen("/3ds/openrct2/openrct2.log", "w");
         _consoleDevoptab = devoptab_list[STD_OUT];
         _teeDevoptab = *_consoleDevoptab;

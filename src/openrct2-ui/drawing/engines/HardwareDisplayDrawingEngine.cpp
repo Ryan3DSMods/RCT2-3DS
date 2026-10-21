@@ -267,6 +267,9 @@ private:
             CopyBitsToTexture(
                 _screenTexture, _bits, static_cast<int32_t>(_width), static_cast<int32_t>(_height), _paletteHWMapped);
         }
+#ifdef __3DS__
+        DrawSoftwareCursor();
+#endif
         if (smoothNN)
         {
             SDL_SetRenderTarget(_sdlRenderer, _scaledScreenTexture);
@@ -287,6 +290,41 @@ private:
 
         SDL_RenderPresent(_sdlRenderer);
     }
+
+#ifdef __3DS__
+    // The 3DS has no hardware cursor and the touch screen is not the screen the game is shown
+    // on, so draw an arrow at the cursor position into the screen texture before presenting.
+    void DrawSoftwareCursor()
+    {
+        static const char* const kArrow[] = {
+            "#          ", "##         ", "#.#        ", "#..#       ", "#...#      ", "#....#     ", "#.....#    ",
+            "#......#   ", "#.......#  ", "#........# ", "#.....#####", "#..#..#    ", "#.# #..#   ", "##  #..#   ",
+            "#    #..#  ", "     #..#  ", "      ##   ",
+        };
+        auto pos = ContextGetCursorPosition();
+        void* pixels;
+        int32_t pitch;
+        if (SDL_LockTexture(_screenTexture, nullptr, &pixels, &pitch) != 0)
+            return;
+        const uint32_t white = SDL_MapRGB(_screenTextureFormat, 255, 255, 255);
+        const uint32_t black = SDL_MapRGB(_screenTextureFormat, 0, 0, 0);
+        for (int32_t y = 0; y < static_cast<int32_t>(std::size(kArrow)); y++)
+        {
+            for (int32_t x = 0; kArrow[y][x] != '\0'; x++)
+            {
+                const char c = kArrow[y][x];
+                if (c == ' ')
+                    continue;
+                const int32_t px = pos.x + x, py = pos.y + y;
+                if (px < 0 || py < 0 || px >= static_cast<int32_t>(_width) || py >= static_cast<int32_t>(_height))
+                    continue;
+                auto* dst = reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(pixels) + py * pitch) + px;
+                *dst = (c == '#') ? black : white;
+            }
+        }
+        SDL_UnlockTexture(_screenTexture);
+    }
+#endif
 
     void CopyBitsToTexture(SDL_Texture* texture, PaletteIndex* src, int32_t width, int32_t height, const uint32_t* palette)
     {
