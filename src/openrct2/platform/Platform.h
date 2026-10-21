@@ -230,6 +230,9 @@ namespace OpenRCT2::Platform
     };
     // C-stick position and A/Y edges (read after SDL has pumped the HID state this frame).
     N3DSExtraInput N3DSPollExtraInput();
+    // The software pointer is only drawn for a few seconds after the C-stick moved it.
+    void N3DSShowPointer();
+    bool N3DSPointerVisible();
 #endif
 
     bool IsRunningInWine();

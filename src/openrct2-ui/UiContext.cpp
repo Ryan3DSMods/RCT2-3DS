@@ -116,9 +116,11 @@ private:
             _stickRemainderY %= 12;
             _cursorState.position = _stickPointer;
             _lastTouchPosition = _stickPointer;
+            Platform::N3DSShowPointer();
         }
         if (input.aPressed)
         {
+            Platform::N3DSShowPointer();
             _cursorState.position = _stickPointer;
             StoreMouseInput(MouseState::leftPress, _stickPointer);
             _cursorState.left = CURSOR_PRESSED;

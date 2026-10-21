@@ -314,6 +314,8 @@ private:
     // on, so draw an arrow at the cursor position into the screen texture before presenting.
     void DrawSoftwareCursor()
     {
+        if (!Platform::N3DSPointerVisible())
+            return;
         static const char* const kArrow[] = {
             "#          ", "##         ", "#.#        ", "#..#       ", "#...#      ", "#....#     ", "#.....#    ",
             "#......#   ", "#.......#  ", "#........# ", "#.....#####", "#..#..#    ", "#.# #..#   ", "##  #..#   ",

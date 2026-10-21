@@ -460,6 +460,11 @@ namespace OpenRCT2::Config
             model->masterVolume = reader->GetInt32("master_volume", 100);
             model->titleMusic = static_cast<TitleMusicKind>(
                 reader->GetInt32("title_theme", EnumValue(TitleMusicKind::OpenRCT2)));
+#ifdef __3DS__
+            // The OpenRCT2 title theme is Ogg/FLAC, which is not decoded on the console; use RCT2's.
+            if (model->titleMusic == TitleMusicKind::OpenRCT2)
+                model->titleMusic = TitleMusicKind::RCT2;
+#endif
             model->soundEnabled = reader->GetBoolean("sound", true);
             model->soundVolume = reader->GetInt32("sound_volume", 100);
             model->rideMusicEnabled = reader->GetBoolean("ride_music", true);

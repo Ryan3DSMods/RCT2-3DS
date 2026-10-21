@@ -277,6 +277,18 @@ namespace OpenRCT2::Platform
         }
     }
 
+    static u64 _pointerVisibleUntil = 0;
+
+    void N3DSShowPointer()
+    {
+        _pointerVisibleUntil = osGetTime() + 4000;
+    }
+
+    bool N3DSPointerVisible()
+    {
+        return osGetTime() < _pointerVisibleUntil;
+    }
+
     N3DSExtraInput N3DSPollExtraInput()
     {
         N3DSExtraInput result{};
