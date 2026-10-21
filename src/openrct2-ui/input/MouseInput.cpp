@@ -10,6 +10,9 @@
 #include "MouseInput.h"
 
 #include <cstdio>
+#include <openrct2/platform/N3DSLayout.h>
+#include <cstdlib>
+#include <map>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -81,6 +84,12 @@ namespace OpenRCT2
     void InputStateWidgetPressed(
         const ScreenCoordsXY& screenCoords, MouseState state, WidgetIndex widgetIndex, WindowBase* w, Widget* widget);
     void SetCursor(CursorID cursor_id);
+#ifdef __3DS__
+    static ScreenCoordsXY _dragStartScreenCoords;
+    static ScreenCoordsXY _dragStartWindowPos;
+    static std::map<const WindowBase*, int32_t> _collapsedPositions;
+#endif
+
     static void InputWindowPositionContinue(
         WindowBase& w, const ScreenCoordsXY& lastScreenCoords, const ScreenCoordsXY& newScreenCoords);
     static void InputWindowPositionEnd(WindowBase& w, const ScreenCoordsXY& screenCoords);
@@ -477,6 +486,10 @@ namespace OpenRCT2
     {
         _inputState = InputState::positioningWindow;
         gInputDragLast = screenCoords - w.windowPos;
+#ifdef __3DS__
+        _dragStartScreenCoords = screenCoords;
+        _dragStartWindowPos = w.windowPos;
+#endif
         _dragWidget.windowClassification = w.classification;
         _dragWidget.windowNumber = w.number;
         _dragWidget.widgetIndex = widgetIndex;
@@ -498,6 +511,29 @@ namespace OpenRCT2
         _inputState = InputState::normal;
         gTooltipCloseTimeout = 0;
         gTooltipWidget = _dragWidget;
+#ifdef __3DS__
+        // A tap on the title bar (no drag) collapses the window to its title bar at the bottom of the
+        // touch screen, so the map is reachable while a tool is active; another tap restores it.
+        const auto moved = screenCoords - _dragStartScreenCoords;
+        if (std::abs(moved.x) < 4 && std::abs(moved.y) < 4)
+        {
+            const int32_t collapsedY = N3DS::kBottomScreenBottom - kTitleHeightNormal - 1;
+            w.invalidate();
+            if (w.windowPos.y >= collapsedY - 2)
+            {
+                auto it = _collapsedPositions.find(&w);
+                w.windowPos.y = it != _collapsedPositions.end() ? it->second : N3DS::kBottomScreenY + kTopToolbarTotalHeight + 1;
+                if (it != _collapsedPositions.end())
+                    _collapsedPositions.erase(it);
+            }
+            else
+            {
+                _collapsedPositions[&w] = _dragStartWindowPos.y;
+                w.windowPos.y = collapsedY;
+            }
+            w.invalidate();
+        }
+#endif
         w.onMoved(screenCoords);
     }
 

@@ -145,11 +145,41 @@ namespace OpenRCT2::SawyerCoding
         }
     }
 
+    static size_t DecodedLengthRLE(const uint8_t* src8, size_t srcLength)
+    {
+        size_t total = 0;
+        for (size_t i = 0; i < srcLength; i++)
+        {
+            uint8_t code = src8[i];
+            if (code & 128)
+            {
+                i++;
+                total += 257 - code;
+            }
+            else
+            {
+                total += code + 1;
+                i += code + 1;
+            }
+        }
+        return total;
+    }
+
     static MemoryStream DecodeChunkRLE(const void* src, size_t srcLength)
     {
         MemoryStream buf;
 
         auto src8 = static_cast<const uint8_t*>(src);
+        // Reserve the output once instead of doubling (and copying) the buffer as it grows.
+        {
+            const auto decodedLength = std::min(DecodedLengthRLE(src8, srcLength), kMaxUncompressedChunkSize);
+            if (decodedLength > 0)
+            {
+                buf.SetPosition(decodedLength - 1);
+                buf.WriteValue<uint8_t>(0);
+                buf.SetPosition(0);
+            }
+        }
         for (size_t i = 0; i < srcLength; i++)
         {
             uint8_t rleCodeByte = src8[i];
@@ -167,10 +197,10 @@ namespace OpenRCT2::SawyerCoding
                     throw SawyerChunkException(kExceptionMessageDestinationTooSmall);
                 }
 
-                for (size_t n = 0; n < count; n++)
-                {
-                    buf.WriteValue(src8[i]);
-                }
+                // One write per run instead of one per byte (a virtual call each on the 3DS).
+                uint8_t run[128];
+                std::memset(run, src8[i], count);
+                buf.Write(run, count);
             }
             else
             {
