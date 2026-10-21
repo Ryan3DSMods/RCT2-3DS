@@ -25,6 +25,7 @@
     #include "../core/String.hpp"
     #include "../localisation/Language.h"
     #include "Platform.h"
+#include "../core/Memory.hpp"
 
     #include <3ds.h>
     #include <pthread.h>
@@ -173,8 +174,11 @@ namespace OpenRCT2::Platform
     }
 
     // Called from main() before anything else on the console.
+    static u32 _linearFreeAtMain;
+
     void N3DSPlatformInit()
     {
+        _linearFreeAtMain = linearSpaceFree();
         std::set_terminate(OnTerminate);
         std::signal(SIGABRT, OnAbortSignal);
         std::atexit(OnExit);
@@ -232,6 +236,9 @@ namespace OpenRCT2::Platform
             static_cast<unsigned long>(__ctru_linear_heap_size / 1024),
             static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION) / 1024),
             static_cast<unsigned long>(osGetMemRegionSize(MEMREGION_APPLICATION) / 1024));
+        std::printf("[mem] linear free at main() %lu KiB\n", static_cast<unsigned long>(_linearFreeAtMain / 1024));
+        N3DSLogMemory("after SDL init");
+        N3DSMemory::DumpEarlyAllocs();
     }
 
     void N3DSLogMemory(const char* tag)

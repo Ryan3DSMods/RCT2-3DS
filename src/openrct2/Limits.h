@@ -15,7 +15,13 @@
 
 namespace OpenRCT2::Limits
 {
+#ifdef __3DS__
+    // Each Ride is ~16 KiB and the table lives in the game state: 1000 of them is 16 MiB.
+    // RCT2's own limit is 255, which covers every original park.
+    constexpr uint16_t kMaxRidesInPark = 255;
+#else
     constexpr uint16_t kMaxRidesInPark = 1000;
+#endif
     constexpr uint16_t kMaxStationsPerRide = 255;
     constexpr uint8_t kCustomerHistorySize = RCT12::Limits::kCustomerHistorySize;
     constexpr uint8_t kMaxGolfHoles = std::numeric_limits<uint8_t>::max();

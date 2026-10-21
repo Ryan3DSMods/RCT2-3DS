@@ -23,9 +23,9 @@ struct CoordsXY;
 namespace OpenRCT2
 {
 #ifdef __3DS__
-    // 512 bytes per slot: 65535 slots would be 32 MiB. Parks with more entities than this
-    // are beyond what the console can simulate anyway.
-    constexpr uint16_t kMaxEntities = 16384;
+    // 512 bytes per slot: 65535 slots would be 32 MiB. RCT2 parks hold at most 10000 entities,
+    // and more than that is beyond what the console can simulate anyway.
+    constexpr uint16_t kMaxEntities = 10000;
 #else
     constexpr uint16_t kMaxEntities = 65535;
 #endif

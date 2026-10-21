@@ -354,6 +354,9 @@ namespace OpenRCT2
             _initialised = true;
 
             CrashInit();
+#ifdef __3DS__
+            Platform::N3DSLogMemory("at start");
+#endif
 
             if (String::equals(Config::Get().general.lastRunVersion, kOpenRCT2Version))
             {
@@ -464,6 +467,9 @@ namespace OpenRCT2
                 LOG_INFO("Creating window...");
                 _uiContext->CreateWindow();
                 LOG_INFO("Window created.");
+#ifdef __3DS__
+                Platform::N3DSLogMemory("after window");
+#endif
             }
 
             EnsureUserContentDirectoriesExist();

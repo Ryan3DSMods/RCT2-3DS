@@ -77,8 +77,29 @@ namespace OpenRCT2::N3DSMemory
         Unlock();
     }
 
+    // Early big allocations (before the console exists) are recorded so they can be printed later.
+    struct EarlyAlloc
+    {
+        size_t size;
+        void* caller;
+    };
+    static EarlyAlloc _earlyAllocs[32];
+    static size_t _numEarlyAllocs = 0;
+    static bool _recordEarly = true;
+
+    void DumpEarlyAllocs()
+    {
+        _recordEarly = false;
+        for (size_t i = 0; i < _numEarlyAllocs; i++)
+            std::printf("[mem] early alloc %lu KiB from %p\n", static_cast<unsigned long>(_earlyAllocs[i].size / 1024), _earlyAllocs[i].caller);
+    }
+
     void* Alloc(size_t size)
     {
+        if (_recordEarly && size >= 1024 * 1024 && _numEarlyAllocs < std::size(_earlyAllocs))
+        {
+            _earlyAllocs[_numEarlyAllocs++] = { size, __builtin_return_address(0) };
+        }
         if (size >= kLinearThreshold)
         {
             if (void* result = LinearAlloc(size))

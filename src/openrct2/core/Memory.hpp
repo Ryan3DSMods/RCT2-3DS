@@ -23,6 +23,7 @@ namespace OpenRCT2::N3DSMemory
     void* Realloc(void* ptr, size_t size);
     void Free(void* ptr);
     size_t LinearFree();
+    void DumpEarlyAllocs();
 } // namespace OpenRCT2::N3DSMemory
     #define OPENRCT2_MALLOC(size) ::OpenRCT2::N3DSMemory::Alloc(size)
     #define OPENRCT2_REALLOC(ptr, size) ::OpenRCT2::N3DSMemory::Realloc(ptr, size)
