@@ -1327,6 +1327,10 @@ namespace OpenRCT2::Ui::Windows
             wnd->invalidate();
             wnd->windowPos.x = ContextGetWidth() / 2 - 115;
             wnd->windowPos.y = ContextGetHeight() / 2 - 87;
+#ifdef __3DS__
+            // Keep the title bar below the (two-row) toolbar on the 240 px screen.
+            wnd->windowPos.y = std::max<int32_t>(wnd->windowPos.y, kTopToolbarTotalHeight + 1);
+#endif
             wnd->invalidate();
         }
         return wnd;

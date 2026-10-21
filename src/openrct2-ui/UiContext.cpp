@@ -516,7 +516,6 @@ public:
                                                  static_cast<int32_t>(e.tfinger.y * _height) };
 #ifdef __3DS__
                     _lastTouchPosition = fingerPos;
-                    std::printf("[input] finger down %d,%d\n", fingerPos.x, fingerPos.y);
 #endif
 
                     _cursorState.touchIsDouble
@@ -546,7 +545,6 @@ public:
                     // press and the release land on the same widget.
                     ScreenCoordsXY fingerPos = _lastTouchPosition;
                     _cursorState.position = fingerPos;
-                    std::printf("[input] finger up %d,%d\n", fingerPos.x, fingerPos.y);
 #else
                     ScreenCoordsXY fingerPos = { static_cast<int32_t>(e.tfinger.x * _width),
                                                  static_cast<int32_t>(e.tfinger.y * _height) };

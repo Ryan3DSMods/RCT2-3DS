@@ -287,15 +287,6 @@ namespace OpenRCT2
         w = windowMgr->FindFromPoint(screenCoords);
         widgetIndex = w == nullptr ? kWidgetIndexNull : windowMgr->FindWidgetFromPoint(*w, screenCoords);
         widget = widgetIndex == kWidgetIndexNull ? nullptr : &w->widgets[widgetIndex];
-#ifdef __3DS__
-        if (state != MouseState::released)
-        {
-            std::printf(
-                "[mouse] state %d at %d,%d -> window %d widget %d (input state %d)\n", static_cast<int>(state), screenCoords.x,
-                screenCoords.y, w != nullptr ? static_cast<int>(w->classification) : -1, static_cast<int>(widgetIndex),
-                static_cast<int>(_inputState));
-        }
-#endif
 
         switch (_inputState)
         {
