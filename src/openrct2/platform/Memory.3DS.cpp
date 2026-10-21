@@ -135,7 +135,11 @@ namespace OpenRCT2::N3DSMemory
         if (ptr == nullptr)
             return Alloc(size);
         if (!IsLinear(ptr) && size < kLinearThreshold)
-            return std::realloc(ptr, size);
+        {
+            if (void* result = std::realloc(ptr, size))
+                return result;
+            // malloc heap exhausted: move the block to the linear heap instead.
+        }
 
         size_t oldSize = IsLinear(ptr) ? linearGetSize(ptr) : malloc_usable_size(ptr);
         void* result = Alloc(size);

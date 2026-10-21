@@ -11,7 +11,9 @@
 
 #include <memory>
 #include <openrct2-ui/windows/Windows.h>
+#include <cstdio>
 #include <openrct2/Context.h>
+#include <openrct2/platform/Platform.h>
 #include <openrct2/Diagnostic.h>
 #include <openrct2/Game.h>
 #include <openrct2/GameState.h>
@@ -153,24 +155,26 @@ namespace OpenRCT2::Title
                         bool loadSuccess = false;
                         auto scenario = GetScenarioRepository()->GetByInternalName(scenarioName);
 #ifdef __3DS__
-                        // Localised RCT2 installs name the scenarios differently; the 3DS title sequence only
-                        // wants a small park, so fall back to the first RCT2 scenario (Electric Fields) by source
-                        // index, then to any small-looking scenario.
+                        // Localised RCT2 installs name (and classify) the scenarios differently. The 3DS title
+                        // sequence only wants a small park, so fall back to the smallest scenario file on the card.
                         if (scenario == nullptr)
                         {
                             auto* repo = GetScenarioRepository();
-                            for (size_t i = 0; i < repo->GetCount() && scenario == nullptr; i++)
+                            uint64_t smallest = UINT64_MAX;
+                            for (size_t i = 0; i < repo->GetCount(); i++)
                             {
                                 auto* entry = repo->GetByIndex(i);
-                                if (entry != nullptr && entry->SourceGame == ScenarioSource::rct2 && entry->SourceIndex == 0)
+                                if (entry == nullptr)
+                                    continue;
+                                auto size = Platform::GetFileSize(entry->Path);
+                                if (size > 0 && size < smallest)
+                                {
+                                    smallest = size;
                                     scenario = entry;
+                                }
                             }
-                            for (size_t i = 0; i < repo->GetCount() && scenario == nullptr; i++)
-                            {
-                                auto* entry = repo->GetByIndex(i);
-                                if (entry != nullptr && entry->SourceGame == ScenarioSource::rct2)
-                                    scenario = entry;
-                            }
+                            if (scenario != nullptr)
+                                std::printf("[title] using %s instead\n", scenario->Path.c_str());
                         }
 #endif
                         if (scenario != nullptr)

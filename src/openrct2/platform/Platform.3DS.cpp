@@ -157,14 +157,14 @@ namespace OpenRCT2::Platform
             }
         }
         WaitForStart();
-        _exit(134);
+        svcExitProcess();
     }
 
     static void OnAbortSignal(int)
     {
         std::printf("\n*** abort() ***\n");
         WaitForStart();
-        _exit(134);
+        svcExitProcess();
     }
 
     void N3DSFatal(const char* message)
@@ -172,7 +172,8 @@ namespace OpenRCT2::Platform
         std::printf("\n*** fatal error ***\n%s\n", message != nullptr ? message : "");
         N3DSLogMemory("at fatal error");
         WaitForStart();
-        _exit(134);
+        // No destructors or library teardown: the audio thread crashes when torn down from here.
+        svcExitProcess();
     }
 
     // data/sequence/3ds.parkseq: a title sequence with a small park (see distribution/3ds/sequence/script.txt).
