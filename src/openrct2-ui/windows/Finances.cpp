@@ -92,7 +92,7 @@ namespace OpenRCT2::Ui::Windows
 
 #ifdef __3DS__
     static constexpr ScreenSize kWindowSizeSummary = { 320, 309 }; // two months visible, scroll for more
-    static constexpr int32_t kSummaryScrollHeight = 190;            // keeps the horizontal scroll bar on screen
+    static constexpr int32_t kSummaryScrollHeight = 130;            // keeps the horizontal scroll bar on screen
 #else
     static constexpr ScreenSize kWindowSizeSummary = { 530, 309 };
     static constexpr int32_t kSummaryScrollHeight = 211;
