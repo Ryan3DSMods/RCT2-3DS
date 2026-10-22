@@ -942,7 +942,7 @@ public:
             && cls != WindowClass::tooltip && cls != WindowClass::error)
         {
             // The ride construction window needs the whole touch screen height; it may cover the toolbar.
-            const bool overToolbar = gLegacyScene == LegacyScene::titleSequence || cls == WindowClass::rideConstruction;
+            const bool overToolbar = gLegacyScene == LegacyScene::titleSequence;
             const int32_t top = overToolbar ? N3DS::kBottomScreenY + 1 : N3DS::kBottomScreenY + kTopToolbarTotalHeight + 1;
             pos.x = std::clamp(pos.x, N3DS::kBottomScreenX, std::max(N3DS::kBottomScreenX, N3DS::kBottomScreenRight - windowSize.width));
             pos.y = std::clamp(pos.y, top, std::max(top, N3DS::kBottomScreenBottom - windowSize.height));

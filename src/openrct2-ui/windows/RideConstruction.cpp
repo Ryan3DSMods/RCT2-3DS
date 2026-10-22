@@ -93,7 +93,7 @@ namespace OpenRCT2::Ui::Windows
 #ifdef __3DS__
     // Two columns on the 320 px touch screen: track pieces on the left, build/demolish, rotate and
     // entrance/exit on the right, so nothing important sits below the visible 240 px.
-    static constexpr ScreenSize kWindowSize = { 320, 240 };
+    static constexpr ScreenSize kWindowSize = { 320, 183 };
     static constexpr int32_t kGroupWidth = 204;
 #else
     static constexpr ScreenSize kWindowSize = { 210, 394 };
@@ -1644,15 +1644,16 @@ namespace OpenRCT2::Ui::Windows
         // Right-hand column (x 213..317) for everything that used to sit below the track preview.
         void Apply3DSLayout()
         {
-            Place(widgets[WIDX_CONSTRUCT], 3, 164, kGroupWidth, 72);
-            Place(widgets[WIDX_DEMOLISH], 216, 20, 46, 24);
-            Place(widgets[WIDX_PREVIOUS_SECTION], 266, 20, 24, 24);
-            Place(widgets[WIDX_NEXT_SECTION], 292, 20, 24, 24);
-            Place(widgets[WIDX_ROTATE], 216, 48, 24, 24);
-            Place(widgets[WIDX_SIMULATE], 242, 48, 24, 24);
-            Place(widgets[WIDX_ENTRANCE_EXIT_GROUPBOX], 213, 78, 104, 46);
-            Place(widgets[WIDX_ENTRANCE], 216, 90, 98, 12);
-            Place(widgets[WIDX_EXIT], 216, 106, 98, 12);
+            // Fits below the toolbar (183 px): the preview/build button is the bottom of the right column.
+            Place(widgets[WIDX_DEMOLISH], 216, 18, 46, 24);
+            Place(widgets[WIDX_PREVIOUS_SECTION], 266, 18, 24, 24);
+            Place(widgets[WIDX_NEXT_SECTION], 292, 18, 24, 24);
+            Place(widgets[WIDX_ROTATE], 216, 44, 24, 24);
+            Place(widgets[WIDX_SIMULATE], 242, 44, 24, 24);
+            Place(widgets[WIDX_ENTRANCE_EXIT_GROUPBOX], 213, 70, 104, 44);
+            Place(widgets[WIDX_ENTRANCE], 216, 82, 98, 12);
+            Place(widgets[WIDX_EXIT], 216, 98, 98, 12);
+            Place(widgets[WIDX_CONSTRUCT], 213, 116, 104, 64);
         }
 #endif
 
