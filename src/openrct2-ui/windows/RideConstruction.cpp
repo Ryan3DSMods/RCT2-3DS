@@ -90,11 +90,20 @@ namespace OpenRCT2::Ui::Windows
     static std::pair<bool, TrackElemType> WindowRideConstructionUpdateStateGetTrackElement();
 
     static constexpr StringId kWindowTitle = kStringIdNone;
+#ifdef __3DS__
+    // Two columns on the 320 px touch screen: track pieces on the left, build/demolish, rotate and
+    // entrance/exit on the right, so nothing important sits below the visible 240 px.
+    static constexpr ScreenSize kWindowSize = { 320, 240 };
+    static constexpr int32_t kGroupWidth = 204;
+#else
     static constexpr ScreenSize kWindowSize = { 210, 394 };
+#endif
 
     static constexpr uint16_t kArrowPulseDuration = 200;
     // Width of the group boxes, e.g. “Banking”
+#ifndef __3DS__
     static constexpr int32_t kGroupWidth = kWindowSize.width - 6;
+#endif
 
 #pragma region Widgets
 
@@ -1623,6 +1632,30 @@ namespace OpenRCT2::Ui::Windows
             }
         }
 
+#ifdef __3DS__
+        static void Place(Widget& w, int32_t x, int32_t y, int32_t width, int32_t height)
+        {
+            w.left = x;
+            w.top = y;
+            w.right = x + width - 1;
+            w.bottom = y + height - 1;
+        }
+
+        // Right-hand column (x 213..317) for everything that used to sit below the track preview.
+        void Apply3DSLayout()
+        {
+            Place(widgets[WIDX_CONSTRUCT], 3, 164, kGroupWidth, 72);
+            Place(widgets[WIDX_DEMOLISH], 216, 20, 46, 24);
+            Place(widgets[WIDX_PREVIOUS_SECTION], 266, 20, 24, 24);
+            Place(widgets[WIDX_NEXT_SECTION], 292, 20, 24, 24);
+            Place(widgets[WIDX_ROTATE], 216, 48, 24, 24);
+            Place(widgets[WIDX_SIMULATE], 242, 48, 24, 24);
+            Place(widgets[WIDX_ENTRANCE_EXIT_GROUPBOX], 213, 78, 104, 46);
+            Place(widgets[WIDX_ENTRANCE], 216, 90, 98, 12);
+            Place(widgets[WIDX_EXIT], 216, 106, 98, 12);
+        }
+#endif
+
         void onPrepareDraw() override
         {
             auto currentRide = GetRide(_currentRideIndex);
@@ -1668,6 +1701,9 @@ namespace OpenRCT2::Ui::Windows
             }
             _windowTitle = FormatStringID(STR_RIDE_CONSTRUCTION_WINDOW_TITLE, currentRide->getName().c_str());
             widgets[WIDX_TITLE].setString(_windowTitle.c_str());
+#ifdef __3DS__
+            Apply3DSLayout();
+#endif
         }
 
         static void onDrawUpdateCoveredPieces(

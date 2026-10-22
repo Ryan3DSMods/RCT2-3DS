@@ -295,7 +295,7 @@ private:
             _n3dsDirtyBottom = INT32_MIN;
             void* pixels;
             int32_t pitch;
-            if (dirtyTop < dirtyBottom && SDL_LockTexture(_screenTexture, nullptr, &pixels, &pitch) == 0)
+            if (SDL_LockTexture(_screenTexture, nullptr, &pixels, &pitch) == 0)
             {
                 Platform::N3DSPresentFrame(
                     static_cast<const uint32_t*>(pixels), pitch / 4, static_cast<int32_t>(_width), static_cast<int32_t>(_height),

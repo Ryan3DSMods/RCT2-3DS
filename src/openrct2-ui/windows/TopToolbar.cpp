@@ -1510,14 +1510,17 @@ namespace OpenRCT2::Ui::Windows
     WindowBase* TopToolbarOpen()
     {
         auto* windowMgr = GetWindowManager();
-        auto* window = windowMgr->Create<TopToolbar>(
 #ifdef __3DS__
+        // Behind the other windows (not in front): windows may cover the toolbar on the small screen.
+        auto* window = windowMgr->Create<TopToolbar>(
             WindowClass::topToolbar, ScreenCoordsXY(N3DS::kBottomScreenX, N3DS::kBottomScreenY),
             { N3DS::kBottomScreenWidth, kTopToolbarTotalHeight + 1 },
+            { WindowFlag::stickToBack, WindowFlag::transparent, WindowFlag::noBackground, WindowFlag::noTitleBar });
 #else
+        auto* window = windowMgr->Create<TopToolbar>(
             WindowClass::topToolbar, ScreenCoordsXY(0, 0), { ContextGetWidth(), kTopToolbarTotalHeight + 1 },
-#endif
             { WindowFlag::stickToFront, WindowFlag::transparent, WindowFlag::noBackground, WindowFlag::noTitleBar });
+#endif
 
         window->setWidgets(_topToolbarWidgets);
 

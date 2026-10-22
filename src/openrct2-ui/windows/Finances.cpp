@@ -90,10 +90,18 @@ namespace OpenRCT2::Ui::Windows
     static constexpr ScreenSize kWindowSizeResearch = { 320, 207 };
     static constexpr ScreenSize kTabContentSizeResearch = kWindowSizeResearch - ScreenSize(0, kTabBarHeight);
 
+#ifdef __3DS__
+    static constexpr ScreenSize kWindowSizeSummary = { 320, 309 }; // two months visible, scroll for more
+#else
     static constexpr ScreenSize kWindowSizeSummary = { 530, 309 };
+#endif
     static constexpr ScreenSize kTabContentSizeSummary = kWindowSizeSummary - ScreenSize(0, kTabBarHeight);
 
+#ifdef __3DS__
+    static constexpr ScreenSize kWindowSizeGraphsMarketing = { 320, 257 };
+#else
     static constexpr ScreenSize kWindowSizeGraphsMarketing = { 530, 257 };
+#endif
     static constexpr ScreenSize kTabContentSizeGraphsMarketing = kWindowSizeGraphsMarketing - ScreenSize(0, kTabBarHeight);
 
     static constexpr int32_t kCostPerWeekOffset = 321;
@@ -118,7 +126,7 @@ namespace OpenRCT2::Ui::Windows
 
     static constexpr auto _windowFinancesSummaryWidgets = makeWidgets(
         makeFinancesWidgets(STR_FINANCIAL_SUMMARY, kTabContentSizeSummary, kWindowSizeSummary),
-        makeWidget                ({130,  50}, {391, 211}, WidgetType::scroll,  WindowColour::secondary, SCROLL_HORIZONTAL              ),
+        makeWidget                ({130,  50}, {kWindowSizeSummary.width - 139, 211}, WidgetType::scroll,  WindowColour::secondary, SCROLL_HORIZONTAL              ),
         makeHoldableSpinnerWidgets({ 64, 277}, { 97,  14}, WidgetType::spinner, WindowColour::secondary                                 ) // NB: 3 widgets
     );
 

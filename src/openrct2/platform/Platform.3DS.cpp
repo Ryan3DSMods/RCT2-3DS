@@ -313,26 +313,25 @@ namespace OpenRCT2::Platform
         const uint32_t* pixels, int32_t pitchPixels, int32_t width, int32_t height, bool isRGBA, int32_t dirtyTop,
         int32_t dirtyBottom)
     {
+        (void)dirtyTop;
+        (void)dirtyBottom;
         if (width < N3DS::kVirtualWidth || height < N3DS::kVirtualHeight)
             return;
         if (!_consoleTakenOver)
         {
             _consoleTakenOver = true;
-            // The console switched the bottom screen to 16-bit. Single buffering on both screens: the game
-            // only redraws what changed, and copying whole frames every time is what costs time here.
+            // The console switched the bottom screen to 16-bit single buffering.
             gfxSetScreenFormat(GFX_BOTTOM, GSP_RGBA8_OES);
-            gfxSetDoubleBuffering(GFX_TOP, false);
-            gfxSetDoubleBuffering(GFX_BOTTOM, false);
-            // The new format only reaches the display with a swap.
-            gfxScreenSwapBuffers(GFX_TOP, false);
-            gfxScreenSwapBuffers(GFX_BOTTOM, false);
+            gfxSetDoubleBuffering(GFX_BOTTOM, true);
         }
-        // Rows 0-239 belong to the top screen, rows 240-479 to the bottom one.
-        CopyToScreen(GFX_TOP, pixels, pitchPixels, 0, 0, N3DS::kTopScreenWidth, dirtyTop, dirtyBottom, isRGBA);
+        // Plain double-buffered full-frame copy of both screens, every frame.
+        CopyToScreen(GFX_TOP, pixels, pitchPixels, 0, 0, N3DS::kTopScreenWidth, 0, N3DS::kScreenHeight, isRGBA);
         CopyToScreen(
-            GFX_BOTTOM, pixels, pitchPixels, N3DS::kBottomScreenX, N3DS::kBottomScreenY, N3DS::kBottomScreenWidth,
-            dirtyTop - N3DS::kBottomScreenY, dirtyBottom - N3DS::kBottomScreenY, isRGBA);
+            GFX_BOTTOM, pixels, pitchPixels, N3DS::kBottomScreenX, N3DS::kBottomScreenY, N3DS::kBottomScreenWidth, 0,
+            N3DS::kScreenHeight, isRGBA);
         gfxFlushBuffers();
+        gfxScreenSwapBuffers(GFX_TOP, false);
+        gfxScreenSwapBuffers(GFX_BOTTOM, false);
     }
 
     void N3DSConsoleInit()
