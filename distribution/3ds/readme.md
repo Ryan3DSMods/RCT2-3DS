@@ -89,7 +89,8 @@ The graphics data files (`g2.dat` etc.) are produced by a native build of
 * Fully zoomed out, guests and staff are not drawn, to keep the frame rate up.
 * Windows larger than the screen are cut off at the right/bottom edge; B
   closes them.
-* No network, no scripting, no OpenGL, no TrueType fonts, no RCT1 graphics
-  (csg1.dat is skipped to save memory, so RCT1 scenarios are not shown).
+* No network, no scripting, no OpenGL, no TrueType fonts. RCT1 scenarios play, but
+  RCT1's own sprite file (csg1.dat) is skipped to save memory, so a few RCT1-only
+  graphics use OpenRCT2's substitutes.
 * The title sequence loads parks in the background; input is not processed
   while a park is loading.
