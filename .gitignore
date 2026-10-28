@@ -1,0 +1,8 @@
+build*/
+*.3dsx
+*.cia
+*.smdh
+*.elf
+rct1/
+rct2/
+.DS_Store
