@@ -3,8 +3,6 @@
 **RollerCoaster Tycoon 2 running natively on the New Nintendo 3DS.**
 Built on [OpenRCT2](https://github.com/OpenRCT2/OpenRCT2). No streaming and no PC needed.
 
-![RCT2 running on a New 3DS](docs/screenshot.png)
-
 ## What you need
 
 - A **New** 3DS, New 3DS XL or New 2DS XL with custom firmware (Luma3DS): see [3ds.hacks.guide](https://3ds.hacks.guide)
@@ -39,13 +37,24 @@ Have RollerCoaster Tycoon 1 too? Copy it to `3ds/openrct2/rct1/` to play the cla
 
 ## Known limits
 
+- Work in progress. The source here is an early version of the port; newer builds will follow.
+
 - New 3DS only.
 - The game runs on the bottom screen (320×240). The top screen shows a log for now.
 - No multiplayer.
 
 ## Building it yourself
 
-Most people can skip this and use the Releases download. To build, you need [devkitPro](https://devkitpro.org/) with devkitARM, libctru and 3ds-pkg-config, the 3DS portlibs (zlib, libpng, zstd, libiconv, fribidi), plus SDL2, libzip and the nlohmann-json headers.
+Most people can skip this and use the Releases download.
+
+This repo holds the 3DS port as a patch on top of OpenRCT2 v0.5.6 (in `patches/`). One command downloads OpenRCT2 and applies it:
+
+```sh
+./setup-source.sh
+cd openrct2
+```
+
+To build, you need [devkitPro](https://devkitpro.org/) with devkitARM, libctru and 3ds-pkg-config, the 3DS portlibs (zlib, libpng, zstd, libiconv, fribidi), plus SDL2, libzip and the nlohmann-json headers.
 
 ```sh
 cmake -S . -B build-3ds -G Ninja \
