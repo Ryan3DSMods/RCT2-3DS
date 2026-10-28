@@ -109,7 +109,9 @@ The dependencies and the SD card layout are described in [distribution/3ds/readm
 
 ## Related projects
 
-- [OpenRCT2-3DS by UhtredOfBamburg](https://github.com/UhtredOfBamburg/OpenRCT2-3DS) — an independent New 3DS port made at the same time; worth a look if you prefer its layout.
+Funny timing: this port was built the very same week as [OpenRCT2-3DS by UhtredOfBamburg](https://github.com/UhtredOfBamburg/OpenRCT2-3DS), an independent New 3DS port — great to see someone else land on it too, and nice work on his side.
+
+The one thing this port does differently that's worth a mention: the game renders as one 400×480 screen split across both displays, so the map continues from the top screen onto the touch screen. You build by tapping the map on the bottom screen, and windows collapse to their title bar with a tap to uncover it.
 
 ## Credits
 
