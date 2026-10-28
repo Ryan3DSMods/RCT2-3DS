@@ -38,6 +38,14 @@ Play **RollerCoaster Tycoon 2** (and RCT1 scenarios) on your New 3DS, built on t
 
 The `.3dsx` can be started from the Homebrew Launcher instead, but it only gets 124 MB of memory and may run out while loading large parks.
 
+### Where is my RCT2 folder?
+
+- **Steam:** right-click the game → *Manage* → *Browse local files*
+- **GOG (Windows):** `C:\GOG Games\RollerCoaster Tycoon 2 Triple Thrill Pack\`
+- **GOG on Mac:** right-click the app → *Show Package Contents* → `Contents/Resources/drive_c/GOG Games/...`
+
+Never had custom firmware on your console? Follow [3ds.hacks.guide](https://3ds.hacks.guide) first.
+
 ## Controls
 
 | Button | Action |
@@ -81,6 +89,18 @@ All of these are ordinary OpenRCT2 shortcuts and can be changed in the options.
 **No sound.** Dump the DSP firmware with the DSP1 homebrew (creates `sdmc:/3ds/dspfirm.cdc`).
 
 **Something crashed.** `sdmc:/3ds/openrct2/openrct2.log` holds everything the game printed, including memory use at each loading stage; attach it to an issue.
+
+## Building it yourself
+
+Most people can skip this and use the release download. This repository is the full OpenRCT2 v0.5.6 source with the port on top; the 3DS-specific code lives in `src/openrct2/platform/*.3DS.cpp`, `src/openrct2-ui/UiContext.3DS.cpp` and the `#ifdef __3DS__` sections of the windows. With devkitPro installed:
+
+```sh
+cmake -S . -B build-3ds -G Ninja -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/3DS.cmake -DCMAKE_BUILD_TYPE=Release
+ninja -C build-3ds            # produces build-3ds/openrct2.3dsx and openrct2.elf
+cd distribution/3ds/cia && ./build-cia.sh   # packages openrct2.cia (needs makerom and bannertool)
+```
+
+The dependencies and the SD card layout are described in [distribution/3ds/readme.md](distribution/3ds/readme.md).
 
 ## More documentation
 
