@@ -1,0 +1,2068 @@
+From 1b3a183146cf143fd7a66fdfeaca22cb243fd64b Mon Sep 17 00:00:00 2001
+From: Ryan3DSMods <349040779+Ryan3DSMods@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 19:41:42 +0000
+Subject: [PATCH 1/8] Nintendo 3DS port: toolchain integration and platform
+ layer (WIP)
+
+Cross-compiles OpenRCT2 for the New Nintendo 3DS with devkitARM/libctru.
+All changes are guarded by NINTENDO_3DS (CMake) / __3DS__ (source) and
+leave other platforms untouched.
+
+- CMake: NINTENDO_3DS branch (network/HTTP/TTF/OpenGL/FLAC/Vorbis/scripting
+  off, no CLI target, no IPO, non-PIC, -Wno-error), .3dsx packaging via
+  ctr_create_3dsx, link libiconv + FriBidi instead of ICU.
+- Align int32_t/uint32_t with 'int' on arm-none-eabi (the toolchain's
+  'long int' breaks std::clamp & co. at hundreds of call sites).
+- Platform.3DS.cpp: SD-card paths under sdmc:/3ds/openrct2/, system
+  language/region mapping, console bring-up (CPU speed-up, RomFS, CFGU),
+  2 MiB main stack, 8 MiB linear heap.
+- String.cpp: UTF-8/UTF-32 conversion and code pages via libiconv;
+  RTL text via FriBidi.
+- UI: game window on the bottom (touch) screen at 320x240, SDL software
+  renderer, top-screen text console for logs, no terminal REPL, 3DS
+  IPlatformUiContext without native dialogs.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LZLN7FDQD6zdxCr63yFAou
+---
+ CMakeLists.txt                                |  58 ++-
+ src/openrct2-ui/CMakeLists.txt                |  14 +
+ src/openrct2-ui/Ui.cpp                        |   9 +
+ src/openrct2-ui/UiContext.3DS.cpp             |  84 ++++
+ src/openrct2-ui/UiContext.cpp                 |  19 +
+ .../engines/HardwareDisplayDrawingEngine.cpp  |   5 +
+ src/openrct2/CMakeLists.txt                   |   8 +-
+ src/openrct2/Version.h                        |   3 +
+ src/openrct2/core/RTL.FriBidi.cpp             |   4 +-
+ src/openrct2/core/RTL.ICU.cpp                 |   2 +-
+ src/openrct2/core/String.cpp                  |  97 ++++-
+ src/openrct2/interface/StdInOutConsole.cpp    |  13 +-
+ src/openrct2/platform/Platform.3DS.cpp        | 380 ++++++++++++++++++
+ src/openrct2/platform/Platform.h              |   7 +
+ 14 files changed, 692 insertions(+), 11 deletions(-)
+ create mode 100644 src/openrct2-ui/UiContext.3DS.cpp
+ create mode 100644 src/openrct2/platform/Platform.3DS.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 871e16c..3da7935 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -119,6 +119,29 @@ option(ENABLE_UBSAN "Enable the UndefinedBehaviourSanitizer.")
+ option(ENABLE_HEADERS_CHECK "Check if include directives in header files are correct. Only works with clang" OFF)
+ option(DISABLE_GUI "Don't build GUI. (Headless only.)")
+ 
++# Nintendo 3DS (devkitARM / libctru) homebrew build. The toolchain file
++# (${DEVKITPRO}/cmake/3DS.cmake) defines NINTENDO_3DS. The console has no
++# network stack we want, no OpenGL, ~178 MB of RAM on a New 3DS and a
++# 400x240 screen, so everything optional is switched off up front.
++if (NINTENDO_3DS)
++    message(STATUS "Configuring for Nintendo 3DS (devkitARM)")
++    set(DISABLE_NETWORK ON CACHE BOOL "" FORCE)
++    set(DISABLE_HTTP ON CACHE BOOL "" FORCE)
++    set(DISABLE_TTF ON CACHE BOOL "" FORCE)
++    set(DISABLE_VERSION_CHECKER ON CACHE BOOL "" FORCE)
++    set(DISABLE_OPENGL ON CACHE BOOL "" FORCE)
++    set(DISABLE_FLAC ON CACHE BOOL "" FORCE)
++    set(DISABLE_VORBIS ON CACHE BOOL "" FORCE)
++    set(DISABLE_DISCORD_RPC ON CACHE BOOL "" FORCE)
++    set(DISABLE_GOOGLE_BENCHMARK ON CACHE BOOL "" FORCE)
++    set(ENABLE_SCRIPTING OFF CACHE BOOL "" FORCE)
++    set(DOWNLOAD_TITLE_SEQUENCES OFF CACHE BOOL "" FORCE)
++    set(DOWNLOAD_OBJECTS OFF CACHE BOOL "" FORCE)
++    set(DOWNLOAD_OPENSFX OFF CACHE BOOL "" FORCE)
++    set(DOWNLOAD_OPENMUSIC OFF CACHE BOOL "" FORCE)
++    set(WITH_TESTS OFF CACHE BOOL "" FORCE)
++endif ()
++
+ 
+ if (FORCE32)
+     set(TARGET_M "-m32")
+@@ -179,7 +202,9 @@ set(SUPPORTED_CHECK_CXX_COMPILER_FLAGS "")
+ 
+ include(cmake/ipo.cmake)
+ list(APPEND IPO_ENABLED_BUILDS RELEASE RELWITHDEBINFO MINSIZEREL)
+-ipo_enable("${IPO_ENABLED_BUILDS}")
++if (NOT NINTENDO_3DS)
++    ipo_enable("${IPO_ENABLED_BUILDS}")
++endif ()
+ 
+ # Describe current version in terms of closest tag
+ execute_process(
+@@ -355,6 +380,26 @@ else ()
+         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=objc-method-access")
+     endif()
+ 
++    if (NINTENDO_3DS)
++        # A brand-new compiler on a brand-new platform: keep warnings visible but not fatal.
++        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error")
++        # arm-none-eabi defines int32_t as 'long int' (and uint32_t as 'long unsigned int'),
++        # unlike every platform OpenRCT2 already runs on, where it is 'int'. Hundreds of call
++        # sites rely on int32_t and int being the same type (std::clamp(int32_t, 0, 10) and
++        # friends), so redefine the compiler's builtin typedef macros before any header sees
++        # them. The ABI is identical (both are 32-bit); only the C++ type identity changes.
++        set(OPENRCT2_3DS_INT32_FLAGS
++            -U__INT32_TYPE__ -D__INT32_TYPE__=int
++            -U__UINT32_TYPE__ "-D__UINT32_TYPE__=unsigned int"
++            -U__INT_LEAST32_TYPE__ -D__INT_LEAST32_TYPE__=int
++            -U__UINT_LEAST32_TYPE__ "-D__UINT_LEAST32_TYPE__=unsigned int"
++            -U__INT32_C "-D__INT32_C(c)=c"
++            -U__UINT32_C "-D__UINT32_C(c)=c ## U")
++        add_compile_options(${OPENRCT2_3DS_INT32_FLAGS})
++        # nlohmann/json's std::filesystem::path conversions need char8_t, which is disabled above.
++        add_compile_definitions(JSON_HAS_FILESYSTEM=0 JSON_HAS_EXPERIMENTAL_FILESYSTEM=0)
++    endif ()
++
+     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
+         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=stringop-overflow")
+     endif()
+@@ -369,7 +414,8 @@ else ()
+         set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+     endif ()
+ 
+-    if (HAIKU OR (APPLE AND NOT USE_MMAP))
++    if (HAIKU OR NINTENDO_3DS OR (APPLE AND NOT USE_MMAP))
++        # 3DS: a static, non-PIC executable; devkitARM uses -mword-relocations instead.
+         set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+     else ()
+         set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+@@ -392,7 +438,9 @@ endif ()
+ 
+ # Include sub-projects
+ include("${ROOT_DIR}/src/openrct2/CMakeLists.txt" NO_POLICY_SCOPE)
+-include("${ROOT_DIR}/src/openrct2-cli/CMakeLists.txt" NO_POLICY_SCOPE)
++if (NOT NINTENDO_3DS)
++    include("${ROOT_DIR}/src/openrct2-cli/CMakeLists.txt" NO_POLICY_SCOPE)
++endif ()
+ if(NOT DISABLE_GUI)
+     include("${ROOT_DIR}/src/openrct2-ui/CMakeLists.txt" NO_POLICY_SCOPE)
+ endif()
+@@ -511,7 +559,9 @@ if (NOT MACOS_BUNDLE OR (MACOS_BUNDLE AND WITH_TESTS))
+         if(NOT DISABLE_GUI)
+             install(TARGETS "openrct2" RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+         endif()
+-        install(TARGETS "openrct2-cli" OPTIONAL RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
++        if (NOT NINTENDO_3DS)
++            install(TARGETS "openrct2-cli" OPTIONAL RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
++        endif ()
+         install(FILES ${DOC_FILES} DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+         if (NOT HAIKU)
+             install(FILES "distribution/linux/io.openrct2.openrct2.appdata.xml" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
+diff --git a/src/openrct2-ui/CMakeLists.txt b/src/openrct2-ui/CMakeLists.txt
+index 710d7b4..0395552 100644
+--- a/src/openrct2-ui/CMakeLists.txt
++++ b/src/openrct2-ui/CMakeLists.txt
+@@ -145,6 +145,20 @@ if (MSVC)
+     add_definitions(-D__DISABLE_DLL_PROXY__)
+ endif ()
+ 
++# Nintendo 3DS: wrap the ELF into a .3dsx that the Homebrew Launcher can run.
++if (NINTENDO_3DS)
++    # SDL's own main() wrapper is not used; Ui.cpp keeps its main() and the
++    # 3DS platform layer brings the console up itself.
++    target_compile_definitions(openrct2 PRIVATE SDL_MAIN_HANDLED)
++    ctr_generate_smdh("${CMAKE_BINARY_DIR}/openrct2.smdh"
++        NAME "OpenRCT2"
++        DESCRIPTION "Open-source re-implementation of RollerCoaster Tycoon 2"
++        AUTHOR "OpenRCT2 developers")
++    ctr_create_3dsx(openrct2
++        OUTPUT "${CMAKE_BINARY_DIR}/openrct2.3dsx"
++        SMDH "${CMAKE_BINARY_DIR}/openrct2.smdh")
++endif ()
++
+ # Add headers check to verify all headers carry their dependencies.
+ # Only valid for Clang for now:
+ # - GCC 8 does not support -Wno-pragma-once-outside-header
+diff --git a/src/openrct2-ui/Ui.cpp b/src/openrct2-ui/Ui.cpp
+index 64e7ffa..057b311 100644
+--- a/src/openrct2-ui/Ui.cpp
++++ b/src/openrct2-ui/Ui.cpp
+@@ -16,6 +16,9 @@
+ 
+ #include <memory>
+ #include <openrct2/Context.h>
++#ifdef __3DS__
++    #include <openrct2/platform/Platform.h>
++#endif
+ #include <openrct2/Diagnostic.h>
+ #include <openrct2/OpenRCT2.h>
+ #include <openrct2/PlatformEnvironment.h>
+@@ -51,6 +54,9 @@ int main(int argc, const char** argv)
+         specialHTMLTargets["!canvas"] = Module.canvas;
+         Module.canvas.addEventListener("contextmenu", function(e) { e.preventDefault(); });
+     });
++#endif
++#ifdef __3DS__
++    OpenRCT2::Platform::N3DSPlatformInit();
+ #endif
+     int32_t rc = EXIT_SUCCESS;
+     auto runGame = CommandLineRun(argv, argc);
+@@ -86,6 +92,9 @@ int main(int argc, const char** argv)
+     {
+         rc = EXIT_FAILURE;
+     }
++#ifdef __3DS__
++    OpenRCT2::Platform::N3DSPlatformExit();
++#endif
+     return rc;
+ }
+ 
+diff --git a/src/openrct2-ui/UiContext.3DS.cpp b/src/openrct2-ui/UiContext.3DS.cpp
+new file mode 100644
+index 0000000..09372b5
+--- /dev/null
++++ b/src/openrct2-ui/UiContext.3DS.cpp
+@@ -0,0 +1,84 @@
++/*****************************************************************************
++ * Copyright (c) 2014-2026 OpenRCT2 developers
++ *
++ * For a complete list of all authors, please refer to contributors.md
++ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
++ *
++ * OpenRCT2 is licensed under the GNU General Public License version 3.
++ *****************************************************************************/
++
++#ifdef __3DS__
++
++    #include "UiContext.h"
++
++    #include <cstdio>
++    #include <openrct2/Diagnostic.h>
++    #include <openrct2/ui/UiContext.h>
++    #include <string>
++    #include <vector>
++
++namespace OpenRCT2::Ui
++{
++    // The 3DS has no desktop: no native dialogs, no browser, no file picker.
++    // OpenRCT2 falls back to its own in-game file browser when HasFilePicker() is false.
++    class N3DSContext final : public IPlatformUiContext
++    {
++    public:
++        void SetWindowIcon(SDL_Window* window) override
++        {
++        }
++
++        bool IsSteamOverlayAttached() override
++        {
++            return false;
++        }
++
++        void ShowMessageBox(SDL_Window* window, const std::string& message) override
++        {
++            // Shown on the top-screen console.
++            std::printf("[MessageBox] %s\n", message.c_str());
++            LOG_INFO("MessageBox: %s", message.c_str());
++        }
++
++        bool HasMenuSupport() override
++        {
++            return false;
++        }
++
++        int32_t ShowMenuDialog(const std::vector<std::string>& options, const std::string& title, const std::string& text) override
++        {
++            return -1;
++        }
++
++        void OpenFolder(const std::string& path) override
++        {
++        }
++
++        void OpenURL(const std::string& url) override
++        {
++            std::printf("[URL] %s\n", url.c_str());
++        }
++
++        std::string ShowFileDialog(SDL_Window* window, const FileDialogDesc& desc) override
++        {
++            return {};
++        }
++
++        std::string ShowDirectoryDialog(SDL_Window* window, const std::string& title) override
++        {
++            return {};
++        }
++
++        bool HasFilePicker() const override
++        {
++            return false;
++        }
++    };
++
++    std::unique_ptr<IPlatformUiContext> CreatePlatformUiContext()
++    {
++        return std::make_unique<N3DSContext>();
++    }
++} // namespace OpenRCT2::Ui
++
++#endif // __3DS__
+diff --git a/src/openrct2-ui/UiContext.cpp b/src/openrct2-ui/UiContext.cpp
+index 18d6d2c..88e1029 100644
+--- a/src/openrct2-ui/UiContext.cpp
++++ b/src/openrct2-ui/UiContext.cpp
+@@ -29,6 +29,9 @@
+ #include <openrct2-ui/input/MouseInput.h>
+ #include <openrct2-ui/interface/Window.h>
+ #include <openrct2/Context.h>
++#ifdef __3DS__
++    #include <openrct2/platform/Platform.h>
++#endif
+ #include <openrct2/Diagnostic.h>
+ #include <openrct2/Input.h>
+ #include <openrct2/Version.h>
+@@ -123,6 +126,10 @@ public:
+         {
+             SDLException::Throw("SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK)");
+         }
++#ifdef __3DS__
++        // The game runs on the bottom (touch) screen; the top screen shows the log.
++        Platform::N3DSConsoleInit();
++#endif
+         _cursorRepository.LoadCursors();
+         _shortcutManager.loadUserBindings();
+     }
+@@ -630,7 +637,12 @@ public:
+         SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, Config::Get().general.minimizeFullscreenFocusLoss ? "1" : "0");
+ 
+         // Set window position to default display
++#ifdef __3DS__
++        // SDL display 0 is the top screen, display 1 the bottom (touch) screen.
++        int32_t defaultDisplay = 1;
++#else
+         int32_t defaultDisplay = std::clamp(Config::Get().general.defaultDisplay, 0, 0xFFFF);
++#endif
+         auto windowPos = ScreenCoordsXY{ static_cast<int32_t>(SDL_WINDOWPOS_UNDEFINED_DISPLAY(defaultDisplay)),
+                                          static_cast<int32_t>(SDL_WINDOWPOS_UNDEFINED_DISPLAY(defaultDisplay)) };
+ 
+@@ -809,6 +821,11 @@ private:
+             width = 1280;
+         if (height <= 0)
+             height = 720;
++#ifdef __3DS__
++        // The bottom screen is exactly 320x240; SDL's 3DS backend does not scale.
++        width = 320;
++        height = 240;
++#endif
+ 
+         // Create window in window first rather than fullscreen so we have the display the window is on first
+         uint32_t flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+@@ -829,7 +846,9 @@ private:
+ 
+         ApplyScreenSaverLockSetting();
+ 
++#ifndef __3DS__
+         SDL_SetWindowMinimumSize(_window, 720, 480);
++#endif
+         SetCursorTrap(Config::Get().general.trapCursor);
+         _platformUiContext->SetWindowIcon(_window);
+ 
+diff --git a/src/openrct2-ui/drawing/engines/HardwareDisplayDrawingEngine.cpp b/src/openrct2-ui/drawing/engines/HardwareDisplayDrawingEngine.cpp
+index 9037b47..e1dabd8 100644
+--- a/src/openrct2-ui/drawing/engines/HardwareDisplayDrawingEngine.cpp
++++ b/src/openrct2-ui/drawing/engines/HardwareDisplayDrawingEngine.cpp
+@@ -75,7 +75,12 @@ public:
+ 
+     void Initialise() override
+     {
++#ifdef __3DS__
++        // Only SDL's software renderer exists on the 3DS; it blits into the screen framebuffer.
++        _sdlRenderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_SOFTWARE);
++#else
+         _sdlRenderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | (_useVsync ? SDL_RENDERER_PRESENTVSYNC : 0));
++#endif
+     }
+ 
+     void SetVSync(bool vsync) override
+diff --git a/src/openrct2/CMakeLists.txt b/src/openrct2/CMakeLists.txt
+index fff63b5..b50ae00 100644
+--- a/src/openrct2/CMakeLists.txt
++++ b/src/openrct2/CMakeLists.txt
+@@ -193,7 +193,7 @@ if (EMSCRIPTEN)
+     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXPORTED_FUNCTIONS=${EMSCRIPTEN_EXPORTED_FUNCTIONS} --js-library ${ROOT_DIR}/emscripten/deps.js")
+ endif()
+ 
+-if (NOT MINGW AND NOT MSVC AND NOT EMSCRIPTEN)
++if (NOT MINGW AND NOT MSVC AND NOT EMSCRIPTEN AND NOT NINTENDO_3DS)
+     if (APPLE AND NOT MACOS_USE_DEPENDENCIES)
+         execute_process(COMMAND brew --prefix icu4c OUTPUT_VARIABLE HOMEBREW_PREFIX_ICU OUTPUT_STRIP_TRAILING_WHITESPACE)
+         # Needed for linking with non-broken icu on Apple platforms
+@@ -313,6 +313,12 @@ target_link_options(libopenrct2 PUBLIC $<$<BOOL:${ENABLE_ASAN}>:-fsanitize=addre
+ target_compile_options(libopenrct2 PUBLIC $<$<BOOL:${ENABLE_UBSAN}>:-fsanitize=undefined>)
+ target_link_options(libopenrct2 PUBLIC  $<$<BOOL:${ENABLE_UBSAN}>:-fsanitize=undefined>)
+ 
++if (NINTENDO_3DS)
++    # Code page conversion (libiconv) and right-to-left text (FriBidi) stand in for ICU.
++    target_compile_definitions(libopenrct2 PRIVATE USE_FRIBIDI)
++    target_link_libraries(libopenrct2 fribidi iconv)
++endif ()
++
+ if (CMAKE_LIBRARY_ARCHITECTURE MATCHES "arm-linux-gnueabihf")
+     message(STATUS "Linking to armhf libs; adding libatomic")
+     target_link_libraries(libopenrct2 atomic)
+diff --git a/src/openrct2/Version.h b/src/openrct2/Version.h
+index 19251d1..ec4657b 100644
+--- a/src/openrct2/Version.h
++++ b/src/openrct2/Version.h
+@@ -75,6 +75,9 @@
+ #ifdef __HAIKU__
+     #define OPENRCT2_PLATFORM "Haiku"
+ #endif
++#ifdef __3DS__
++    #define OPENRCT2_PLATFORM "Nintendo 3DS"
++#endif
+ #ifndef OPENRCT2_PLATFORM
+     #error Unknown platform!
+ #endif
+diff --git a/src/openrct2/core/RTL.FriBidi.cpp b/src/openrct2/core/RTL.FriBidi.cpp
+index e909e37..73ecda3 100644
+--- a/src/openrct2/core/RTL.FriBidi.cpp
++++ b/src/openrct2/core/RTL.FriBidi.cpp
+@@ -7,7 +7,7 @@
+  * OpenRCT2 is licensed under the GNU General Public License version 3.
+  *****************************************************************************/
+ 
+-#if defined(_WIN32) && defined(USE_FRIBIDI)
++#if (defined(_WIN32) || defined(__3DS__)) && defined(USE_FRIBIDI)
+     #include "RTL.h"
+ 
+     #include "../Diagnostic.h"
+@@ -49,7 +49,7 @@ std::string FixRTL(std::string& input)
+ 
+     return std::string(outputString);
+ }
+-#elif defined(_WIN32)
++#elif defined(_WIN32) || defined(__3DS__)
+     #include "../Diagnostic.h"
+     #include "RTL.h"
+ 
+diff --git a/src/openrct2/core/RTL.ICU.cpp b/src/openrct2/core/RTL.ICU.cpp
+index ed3ae71..3723ebe 100644
+--- a/src/openrct2/core/RTL.ICU.cpp
++++ b/src/openrct2/core/RTL.ICU.cpp
+@@ -7,7 +7,7 @@
+  * OpenRCT2 is licensed under the GNU General Public License version 3.
+  *****************************************************************************/
+ 
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__3DS__)
+     #include "RTL.h"
+ 
+     #include <algorithm>
+diff --git a/src/openrct2/core/String.cpp b/src/openrct2/core/String.cpp
+index 8914308..6944277 100644
+--- a/src/openrct2/core/String.cpp
++++ b/src/openrct2/core/String.cpp
+@@ -12,13 +12,17 @@
+ 
+ #include <cassert>
+ #include <cctype>
++#include <cerrno>
+ #include <cstring>
+ #include <iomanip>
+ #include <sstream>
+ #include <stdexcept>
+ #include <vector>
+ 
+-#ifndef _WIN32
++#if defined(__3DS__)
++    #include <cwctype>
++    #include <iconv.h>
++#elif !defined(_WIN32)
+     #if defined(__linux__) || defined(__sun)
+         #include <alloca.h>
+     #endif
+@@ -56,6 +60,17 @@ namespace OpenRCT2::String
+         auto result = std::string(sizeReq, 0);
+         WideCharToMultiByte(EnumValue(CodePage::utf8), 0, src.data(), srcLen, result.data(), sizeReq, nullptr, nullptr);
+         return result;
++#elif defined(__3DS__)
++        // wchar_t is UTF-32 on arm-none-eabi.
++        std::string result;
++        result.reserve(src.size());
++        for (wchar_t wc : src)
++        {
++            utf8 buffer[8];
++            auto end = UTF8WriteCodepoint(buffer, static_cast<uint32_t>(wc));
++            result.append(buffer, end);
++        }
++        return result;
+ #else
+     // Which constructor to use depends on the size of wchar_t...
+     // UTF-32 is the default on most POSIX systems; Windows uses UTF-16.
+@@ -84,6 +99,18 @@ namespace OpenRCT2::String
+         auto result = std::wstring(sizeReq, 0);
+         MultiByteToWideChar(EnumValue(CodePage::utf8), 0, src.data(), srcLen, result.data(), sizeReq);
+         return result;
++#elif defined(__3DS__)
++        std::wstring result;
++        std::string copy(src);
++        const utf8* ch = copy.c_str();
++        while (*ch != '\0')
++        {
++            const utf8* next = nullptr;
++            uint32_t codepoint = UTF8GetNext(ch, &next);
++            result.push_back(static_cast<wchar_t>(codepoint));
++            ch = next;
++        }
++        return result;
+ #else
+         icu::UnicodeString str = icu::UnicodeString::fromUTF8(std::string(src));
+ 
+@@ -559,7 +586,28 @@ namespace OpenRCT2::String
+         return std::string(startSubstr, stringLength);
+     }
+ 
+-#ifndef _WIN32
++#if defined(__3DS__)
++    static const char* getIconvCodePage(OpenRCT2::CodePage codePage)
++    {
++        switch (codePage)
++        {
++            case OpenRCT2::CodePage::cp932:
++                return "CP932";
++            case OpenRCT2::CodePage::cp936:
++                return "CP936";
++            case OpenRCT2::CodePage::cp949:
++                return "CP949";
++            case OpenRCT2::CodePage::cp950:
++                return "CP950";
++            case OpenRCT2::CodePage::cp1252:
++                return "CP1252";
++            case OpenRCT2::CodePage::utf8:
++                return "UTF-8";
++            default:
++                throw std::runtime_error("Unsupported code page: " + std::to_string(EnumValue(codePage)));
++        }
++    }
++#elif !defined(_WIN32)
+     static const char* getIcuCodePage(OpenRCT2::CodePage codePage)
+     {
+         switch (codePage)
+@@ -610,6 +658,44 @@ namespace OpenRCT2::String
+         }
+ 
+         return dst;
++#elif defined(__3DS__)
++        if (srcCodePage == CodePage::utf8)
++        {
++            return std::string(src);
++        }
++        iconv_t cd = iconv_open("UTF-8", getIconvCodePage(srcCodePage));
++        if (cd == reinterpret_cast<iconv_t>(-1))
++        {
++            return std::string(src);
++        }
++        std::string result;
++        std::string input(src);
++        char* inPtr = input.data();
++        size_t inLeft = input.size();
++        char outBuffer[256];
++        while (inLeft > 0)
++        {
++            char* outPtr = outBuffer;
++            size_t outLeft = sizeof(outBuffer);
++            size_t rc = iconv(cd, &inPtr, &inLeft, &outPtr, &outLeft);
++            result.append(outBuffer, outPtr - outBuffer);
++            if (rc == static_cast<size_t>(-1))
++            {
++                if (errno == E2BIG)
++                    continue;
++                // Invalid or truncated sequence: skip one byte and keep going.
++                if (inLeft > 0)
++                {
++                    result.push_back('?');
++                    inPtr++;
++                    inLeft--;
++                    continue;
++                }
++                break;
++            }
++        }
++        iconv_close(cd);
++        return result;
+ #else
+         const char* codepage = getIcuCodePage(srcCodePage);
+         icu::UnicodeString convertString(src.data(), codepage);
+@@ -647,6 +733,13 @@ namespace OpenRCT2::String
+         }
+ 
+         return toUtf8(dstW);
++#elif defined(__3DS__)
++        auto wide = toWideChar(src);
++        for (auto& c : wide)
++        {
++            c = static_cast<wchar_t>(std::towupper(static_cast<wint_t>(c)));
++        }
++        return toUtf8(wide);
+ #else
+         icu::UnicodeString str = icu::UnicodeString::fromUTF8(std::string(src));
+         str.toUpper();
+diff --git a/src/openrct2/interface/StdInOutConsole.cpp b/src/openrct2/interface/StdInOutConsole.cpp
+index 80e0298..d5079cb 100644
+--- a/src/openrct2/interface/StdInOutConsole.cpp
++++ b/src/openrct2/interface/StdInOutConsole.cpp
+@@ -14,7 +14,9 @@
+ #include "../platform/Platform.h"
+ #include "../scripting/ScriptEngine.h"
+ 
+-#include <linenoise.hpp>
++#ifndef __3DS__
++    #include <linenoise.hpp>
++#endif
+ 
+ using namespace OpenRCT2;
+ 
+@@ -25,6 +27,10 @@ using namespace OpenRCT2;
+ 
+ void StdInOutConsole::Start()
+ {
++#ifdef __3DS__
++    // No terminal on the console: there is nothing to read commands from.
++    return;
++#else
+     // Only start if stdin/stdout is a TTY
+     if (!isatty(fileno(stdin)) || !isatty(fileno(stdout)))
+     {
+@@ -70,6 +76,7 @@ void StdInOutConsole::Start()
+         }
+     });
+     replThread.detach();
++#endif // __3DS__
+ }
+ 
+ std::future<void> StdInOutConsole::Eval(const std::string& s)
+@@ -107,7 +114,9 @@ void StdInOutConsole::ProcessEvalQueue()
+ 
+ void StdInOutConsole::Clear()
+ {
++#ifndef __3DS__
+     linenoise::linenoiseClearScreen();
++#endif
+ }
+ 
+ void StdInOutConsole::Close()
+@@ -157,7 +166,9 @@ void StdInOutConsole::WriteLine(const std::string& s, FormatToken colourFormat)
+ 
+             std::printf("\r%s%s\x1b[0m\x1b[0K\r\n", formatBegin.c_str(), mainString);
+             std::fflush(stdout);
++#ifndef __3DS__
+             linenoise::linenoiseEditRefreshLine();
++#endif
+         }
+         else
+         {
+diff --git a/src/openrct2/platform/Platform.3DS.cpp b/src/openrct2/platform/Platform.3DS.cpp
+new file mode 100644
+index 0000000..3a13721
+--- /dev/null
++++ b/src/openrct2/platform/Platform.3DS.cpp
+@@ -0,0 +1,380 @@
++/*****************************************************************************
++ * Copyright (c) 2014-2026 OpenRCT2 developers
++ *
++ * For a complete list of all authors, please refer to contributors.md
++ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
++ *
++ * OpenRCT2 is licensed under the GNU General Public License version 3.
++ *****************************************************************************/
++
++// Nintendo 3DS (devkitARM + libctru) platform layer.
++//
++// Everything lives on the SD card:
++//   sdmc:/3ds/openrct2/        user config, saves, cache  (SpecialFolder::user*)
++//   sdmc:/3ds/openrct2/data/   OpenRCT2's own data (g2.dat, language, object, sequence, ...)
++//   sdmc:/3ds/openrct2/rct2/   the original RollerCoaster Tycoon 2 installation
++//   sdmc:/3ds/openrct2/rct1/   (optional) RollerCoaster Tycoon 1
++// If the executable was packaged with a RomFS that contains a "data" directory,
++// that is preferred for the install path.
++
++#ifdef __3DS__
++
++    #include "../Date.h"
++    #include "../Diagnostic.h"
++    #include "../core/Path.hpp"
++    #include "../core/String.hpp"
++    #include "../localisation/Language.h"
++    #include "Platform.h"
++
++    #include <3ds.h>
++    #include <cstdio>
++    #include <cstdlib>
++    #include <cstring>
++    #include <ctime>
++    #include <sys/stat.h>
++    #include <sys/time.h>
++
++// libctru lets the application size its memory regions through weak symbols.
++extern "C" {
++// Main thread stack: OpenRCT2 keeps sizeable buffers on the stack (paint, formatting, bidi).
++u32 __stacksize__ = 2 * 1024 * 1024;
++// Linear (GPU-visible) heap: only the screen framebuffers and audio buffers live here,
++// so shrink it from libctru's 32 MiB default and leave the rest to the main heap.
++u32 __ctru_linear_heap_size = 8 * 1024 * 1024;
++}
++
++namespace OpenRCT2::Platform
++{
++    static constexpr const utf8* kUserRoot = "sdmc:/3ds/openrct2";
++    static constexpr const utf8* kSdDataPath = "sdmc:/3ds/openrct2/data";
++    static constexpr const utf8* kRomfsDataPath = "romfs:/data";
++    static constexpr const utf8* kRct2Path = "sdmc:/3ds/openrct2/rct2";
++    static constexpr const utf8* kRct1Path = "sdmc:/3ds/openrct2/rct1";
++
++    static bool _cfguReady = false;
++    static bool _romfsReady = false;
++
++    // Called from main() before anything else on the console.
++    void N3DSPlatformInit()
++    {
++        // New 3DS: 804 MHz + L2 cache. No-op on an original 3DS.
++        osSetSpeedupEnable(true);
++        _romfsReady = R_SUCCEEDED(romfsInit());
++        _cfguReady = R_SUCCEEDED(cfguInit());
++        mkdir("sdmc:/3ds", 0777);
++        mkdir(kUserRoot, 0777);
++    }
++
++    void N3DSConsoleInit()
++    {
++        consoleInit(GFX_TOP, nullptr);
++        std::printf("OpenRCT2 for Nintendo 3DS\n");
++    }
++
++    void N3DSPlatformExit()
++    {
++        if (_cfguReady)
++            cfguExit();
++        if (_romfsReady)
++            romfsExit();
++    }
++
++    std::string GetEnvironmentVariable(std::string_view name)
++    {
++        return String::toStd(getenv(std::string(name).c_str()));
++    }
++
++    std::string GetFolderPath(SpecialFolder folder)
++    {
++        switch (folder)
++        {
++            case SpecialFolder::userCache:
++            case SpecialFolder::userConfig:
++            case SpecialFolder::userData:
++            case SpecialFolder::userHome:
++                return kUserRoot;
++            default:
++                return std::string();
++        }
++    }
++
++    std::string GetDocsPath()
++    {
++        return std::string();
++    }
++
++    std::string GetInstallPath()
++    {
++        if (_romfsReady && Path::DirectoryExists(kRomfsDataPath))
++        {
++            return kRomfsDataPath;
++        }
++        return kSdDataPath;
++    }
++
++    std::string GetCurrentExecutablePath()
++    {
++        return std::string();
++    }
++
++    bool ShouldIgnoreCase()
++    {
++        // The SD card is FAT32: case-insensitive.
++        return true;
++    }
++
++    bool IsPathSeparator(char c)
++    {
++        return c == '/';
++    }
++
++    uint64_t GetLastModified(std::string_view path)
++    {
++        struct stat statInfo{};
++        if (stat(std::string(path).c_str(), &statInfo) == 0)
++        {
++            return statInfo.st_mtime;
++        }
++        return 0;
++    }
++
++    uint64_t GetFileSize(std::string_view path)
++    {
++        struct stat statInfo{};
++        if (stat(std::string(path).c_str(), &statInfo) == 0)
++        {
++            return statInfo.st_size;
++        }
++        return 0;
++    }
++
++    std::string ResolveCasing(std::string_view path, bool fileExists)
++    {
++        // Case-insensitive file system: whatever casing was asked for will do.
++        return std::string(path);
++    }
++
++    std::string FormatShortDate(std::time_t timestamp)
++    {
++        char date[20];
++        std::strftime(date, sizeof(date), "%d/%m/%Y", std::localtime(&timestamp));
++        return std::string(date);
++    }
++
++    std::string FormatTime(std::time_t timestamp)
++    {
++        char time[20];
++        std::strftime(time, sizeof(time), "%H:%M:%S", std::localtime(&timestamp));
++        return std::string(time);
++    }
++
++    bool IsColourTerminalSupported()
++    {
++        return false;
++    }
++
++    bool IsRunningInWine()
++    {
++        return false;
++    }
++
++    bool FindApp(std::string_view app, std::string* output)
++    {
++        return false;
++    }
++
++    int32_t Execute(const char* args[], std::string* output)
++    {
++        LOG_WARNING("The 3DS cannot execute external processes.");
++        return -1;
++    }
++
++    bool ProcessIsElevated()
++    {
++        return false;
++    }
++
++    bool LockSingleInstance()
++    {
++        return true;
++    }
++
++    int32_t GetDrives()
++    {
++        return 0;
++    }
++
++    time_t FileGetModifiedTime(u8string_view path)
++    {
++        struct stat buf;
++        if (stat(u8string(path).c_str(), &buf) == 0)
++        {
++            return buf.st_mtime;
++        }
++        return 100;
++    }
++
++    datetime64 GetDatetimeNowUTC()
++    {
++        const datetime64 epochAsTicks = 621355968000000000;
++        struct timeval tv;
++        gettimeofday(&tv, nullptr);
++        uint64_t utcEpochTicks = static_cast<uint64_t>(tv.tv_sec) * 10000000uLL + tv.tv_usec * 10;
++        return epochAsTicks + utcEpochTicks;
++    }
++
++    bool RequireNewWindow(bool openGL)
++    {
++        return true;
++    }
++
++    std::string GetUsername()
++    {
++        if (_cfguReady)
++        {
++            // The system profile name is UTF-16, at most 10 code units.
++            u16 name[11] = {};
++            if (R_SUCCEEDED(CFGU_GetConfigInfoBlk2(sizeof(u16) * 10, 0x000A0000, name)))
++            {
++                std::string result;
++                for (u16 c : name)
++                {
++                    if (c == 0)
++                        break;
++                    if (c < 0x80)
++                        result += static_cast<char>(c);
++                    else if (c < 0x800)
++                    {
++                        result += static_cast<char>(0xC0 | (c >> 6));
++                        result += static_cast<char>(0x80 | (c & 0x3F));
++                    }
++                    else
++                    {
++                        result += static_cast<char>(0xE0 | (c >> 12));
++                        result += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
++                        result += static_cast<char>(0x80 | (c & 0x3F));
++                    }
++                }
++                if (!result.empty())
++                    return result;
++            }
++        }
++        return "Player";
++    }
++
++    static u8 GetSystemRegion()
++    {
++        u8 region = CFG_REGION_EUR;
++        if (_cfguReady)
++            CFGU_SecureInfoGetRegion(&region);
++        return region;
++    }
++
++    uint16_t GetLocaleLanguage()
++    {
++        u8 language = CFG_LANGUAGE_EN;
++        if (_cfguReady)
++            CFGU_GetSystemLanguage(&language);
++        switch (language)
++        {
++            case CFG_LANGUAGE_JP:
++                return LANGUAGE_JAPANESE;
++            case CFG_LANGUAGE_EN:
++                return GetSystemRegion() == CFG_REGION_USA ? LANGUAGE_ENGLISH_US : LANGUAGE_ENGLISH_UK;
++            case CFG_LANGUAGE_FR:
++                return LANGUAGE_FRENCH;
++            case CFG_LANGUAGE_DE:
++                return LANGUAGE_GERMAN;
++            case CFG_LANGUAGE_IT:
++                return LANGUAGE_ITALIAN;
++            case CFG_LANGUAGE_ES:
++                return LANGUAGE_SPANISH;
++            case CFG_LANGUAGE_ZH:
++                return LANGUAGE_CHINESE_SIMPLIFIED;
++            case CFG_LANGUAGE_KO:
++                return LANGUAGE_KOREAN;
++            case CFG_LANGUAGE_NL:
++                return LANGUAGE_DUTCH;
++            case CFG_LANGUAGE_PT:
++                return LANGUAGE_PORTUGUESE_BR;
++            case CFG_LANGUAGE_RU:
++                return LANGUAGE_RUSSIAN;
++            case CFG_LANGUAGE_TW:
++                return LANGUAGE_CHINESE_TRADITIONAL;
++            default:
++                return LANGUAGE_ENGLISH_UK;
++        }
++    }
++
++    CurrencyType GetLocaleCurrency()
++    {
++        switch (GetSystemRegion())
++        {
++            case CFG_REGION_JPN:
++                return GetCurrencyValue("JPY");
++            case CFG_REGION_USA:
++                return GetCurrencyValue("USD");
++            case CFG_REGION_EUR:
++                return GetCurrencyValue("EUR");
++            case CFG_REGION_AUS:
++                return GetCurrencyValue("AUD");
++            case CFG_REGION_KOR:
++                return GetCurrencyValue("KRW");
++            default:
++                return GetCurrencyValue(nullptr);
++        }
++    }
++
++    MeasurementFormat GetLocaleMeasurementFormat()
++    {
++        return GetSystemRegion() == CFG_REGION_USA ? MeasurementFormat::imperial : MeasurementFormat::metric;
++    }
++
++    uint8_t GetLocaleDateFormat()
++    {
++        switch (GetSystemRegion())
++        {
++            case CFG_REGION_USA:
++                return DATE_FORMAT_MONTH_DAY_YEAR;
++            case CFG_REGION_JPN:
++            case CFG_REGION_KOR:
++            case CFG_REGION_CHN:
++            case CFG_REGION_TWN:
++                return DATE_FORMAT_YEAR_MONTH_DAY;
++            default:
++                return DATE_FORMAT_DAY_MONTH_YEAR;
++        }
++    }
++
++    TemperatureUnit GetLocaleTemperatureFormat()
++    {
++        return GetSystemRegion() == CFG_REGION_USA ? TemperatureUnit::fahrenheit : TemperatureUnit::celsius;
++    }
++
++    SteamPaths GetSteamPaths()
++    {
++        return {};
++    }
++
++    std::vector<std::string> GetSearchablePathsRCT1()
++    {
++        return { kRct1Path };
++    }
++
++    std::vector<std::string> GetSearchablePathsRCT2()
++    {
++        return { kRct2Path };
++    }
++
++    u8string StrDecompToPrecomp(u8string_view input)
++    {
++        return u8string(input);
++    }
++
++    bool HandleSpecialCommandLineArgument(const char* argument)
++    {
++        return false;
++    }
++} // namespace OpenRCT2::Platform
++
++#endif // __3DS__
+diff --git a/src/openrct2/platform/Platform.h b/src/openrct2/platform/Platform.h
+index baae59e..2c7178e 100644
+--- a/src/openrct2/platform/Platform.h
++++ b/src/openrct2/platform/Platform.h
+@@ -210,6 +210,13 @@ namespace OpenRCT2::Platform
+     void* GetAssetManager();
+     const std::vector<AssetInfo>& GetAssetList();
+ #endif
++#ifdef __3DS__
++    // Console bring-up / teardown (CPU speed-up, RomFS, system config). Called from main().
++    void N3DSPlatformInit();
++    void N3DSPlatformExit();
++    // Turn the top screen into a text console (stdout). Call after SDL's video init.
++    void N3DSConsoleInit();
++#endif
+ 
+     bool IsRunningInWine();
+     bool IsColourTerminalSupported();
+-- 
+2.43.0
+
+
+From 62781762e50bc8428e7b988fd12f9999090382f7 Mon Sep 17 00:00:00 2001
+From: Ryan3DSMods <349040779+Ryan3DSMods@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 19:44:51 +0000
+Subject: [PATCH 2/8] 3DS: cover INT32_MIN/MAX in the int32 alignment, log
+ memory at start, add readme
+
+- CMake: also redefine __INT32_MAX__/__UINT32_MAX__ (and the LEAST variants)
+  so INT32_MIN/INT32_MAX are 'int' like int32_t.
+- Platform.3DS.cpp: print console model and free application memory on the
+  top-screen console.
+- distribution/3ds/readme.md: SD-card layout, controls, build notes.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LZLN7FDQD6zdxCr63yFAou
+---
+ CMakeLists.txt                         |  6 +++-
+ distribution/3ds/readme.md             | 46 ++++++++++++++++++++++++++
+ src/openrct2/platform/Platform.3DS.cpp |  7 +++-
+ 3 files changed, 57 insertions(+), 2 deletions(-)
+ create mode 100644 distribution/3ds/readme.md
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3da7935..e5629e1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -394,7 +394,11 @@ else ()
+             -U__INT_LEAST32_TYPE__ -D__INT_LEAST32_TYPE__=int
+             -U__UINT_LEAST32_TYPE__ "-D__UINT_LEAST32_TYPE__=unsigned int"
+             -U__INT32_C "-D__INT32_C(c)=c"
+-            -U__UINT32_C "-D__UINT32_C(c)=c ## U")
++            -U__UINT32_C "-D__UINT32_C(c)=c ## U"
++            -U__INT32_MAX__ -D__INT32_MAX__=0x7fffffff
++            -U__UINT32_MAX__ -D__UINT32_MAX__=0xffffffffU
++            -U__INT_LEAST32_MAX__ -D__INT_LEAST32_MAX__=0x7fffffff
++            -U__UINT_LEAST32_MAX__ -D__UINT_LEAST32_MAX__=0xffffffffU)
+         add_compile_options(${OPENRCT2_3DS_INT32_FLAGS})
+         # nlohmann/json's std::filesystem::path conversions need char8_t, which is disabled above.
+         add_compile_definitions(JSON_HAS_FILESYSTEM=0 JSON_HAS_EXPERIMENTAL_FILESYSTEM=0)
+diff --git a/distribution/3ds/readme.md b/distribution/3ds/readme.md
+new file mode 100644
+index 0000000..2869f5d
+--- /dev/null
++++ b/distribution/3ds/readme.md
+@@ -0,0 +1,46 @@
++# OpenRCT2 for Nintendo 3DS (homebrew, work in progress)
++
++An experimental port of OpenRCT2 to the **New Nintendo 3DS** (devkitARM / libctru).
++An original 3DS does not have enough RAM; a New 3DS / New 2DS XL running
++custom firmware (Luma3DS) is required.
++
++## SD card layout
++
++```
++sdmc:/3ds/openrct2/openrct2.3dsx     the game (launch from the Homebrew Launcher)
++sdmc:/3ds/openrct2/data/             OpenRCT2's own data (see below)
++sdmc:/3ds/openrct2/rct2/             your RollerCoaster Tycoon 2 installation
++sdmc:/3ds/openrct2/rct1/             (optional) RollerCoaster Tycoon 1
++sdmc:/3ds/openrct2/config.ini        written on first start; saves go to save/
++```
++
++`data/` must contain `g2.dat`, `fonts.dat`, `palettes.dat`, `tracks.dat`,
++`language/`, `scenario_patches/`, `object/`, `sequence/` and `assetpack/`
++(the same files a desktop install ships in `share/openrct2`).
++
++`rct2/` is a copy of the RCT2 game folder with its `Data`, `ObjData`,
++`Scenarios`, `Landscapes` and `Tracks` sub-folders. Only the files are read;
++nothing is written there.
++
++## Screens and controls
++
++* Bottom screen: the game, 320x240. The touch screen is the mouse.
++* Top screen: log output (useful while the port is young).
++* Circle pad / D-pad: scroll the view. Text input opens the system keyboard.
++
++## Building
++
++Needs devkitPro with `devkitARM`, `libctru`, `3ds-pkg-config` and the 3DS
++portlibs `3ds-zlib`, `3ds-libpng`, `3ds-libzstd`, `3ds-libiconv`,
++`3ds-libfribidi`, plus SDL2 and libzip cross-compiled into
++`$DEVKITPRO/portlibs/3ds` and the nlohmann-json headers in its `include/`.
++
++```
++cmake -S . -B build-3ds -G Ninja \
++    -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/3DS.cmake \
++    -DCMAKE_BUILD_TYPE=Release
++ninja -C build-3ds
++```
++
++The graphics data files (`g2.dat` etc.) are produced by a native build of
++`openrct2-cli` (`openrct2-cli sprite build ...`), as for any cross-compile.
+diff --git a/src/openrct2/platform/Platform.3DS.cpp b/src/openrct2/platform/Platform.3DS.cpp
+index 3a13721..3552d8d 100644
+--- a/src/openrct2/platform/Platform.3DS.cpp
++++ b/src/openrct2/platform/Platform.3DS.cpp
+@@ -68,7 +68,12 @@ namespace OpenRCT2::Platform
+     void N3DSConsoleInit()
+     {
+         consoleInit(GFX_TOP, nullptr);
+-        std::printf("OpenRCT2 for Nintendo 3DS\n");
++        bool isNew3DS = false;
++        APT_CheckNew3DS(&isNew3DS);
++        std::printf(
++            "OpenRCT2 for Nintendo 3DS (%s)\nApplication memory: %lu KiB free of %lu KiB\n",
++            isNew3DS ? "New 3DS" : "Old 3DS", static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION) / 1024),
++            static_cast<unsigned long>(osGetMemRegionSize(MEMREGION_APPLICATION) / 1024));
+     }
+ 
+     void N3DSPlatformExit()
+-- 
+2.43.0
+
+
+From b3d685e62047b713177efd2a9b634a006aa0fb38 Mon Sep 17 00:00:00 2001
+From: Ryan3DSMods <349040779+Ryan3DSMods@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 19:51:10 +0000
+Subject: [PATCH 3/8] 3DS: map _stricmp to strcasecmp
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LZLN7FDQD6zdxCr63yFAou
+---
+ src/openrct2/core/String.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/openrct2/core/String.cpp b/src/openrct2/core/String.cpp
+index 6944277..0006fee 100644
+--- a/src/openrct2/core/String.cpp
++++ b/src/openrct2/core/String.cpp
+@@ -38,7 +38,7 @@
+ #include "String.hpp"
+ #include "UTF8.h"
+ 
+-#if defined(__unix__) || defined(__HAIKU__) || (defined(__APPLE__) && defined(__MACH__))
++#if defined(__unix__) || defined(__HAIKU__) || defined(__3DS__) || (defined(__APPLE__) && defined(__MACH__))
+     #define _stricmp(x, y) strcasecmp((x), (y))
+ #endif
+ 
+-- 
+2.43.0
+
+
+From cda51ba05860b35e246d6e2baee3dcfca44cacb9 Mon Sep 17 00:00:00 2001
+From: Ryan3DSMods <349040779+Ryan3DSMods@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 19:57:46 +0000
+Subject: [PATCH 4/8] 3DS: give std::thread threads a 512 KiB stack via
+ --wrap=pthread_create
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LZLN7FDQD6zdxCr63yFAou
+---
+ src/openrct2-ui/CMakeLists.txt         |  2 ++
+ src/openrct2/platform/Platform.3DS.cpp | 19 +++++++++++++++++++
+ 2 files changed, 21 insertions(+)
+
+diff --git a/src/openrct2-ui/CMakeLists.txt b/src/openrct2-ui/CMakeLists.txt
+index 0395552..0b2a394 100644
+--- a/src/openrct2-ui/CMakeLists.txt
++++ b/src/openrct2-ui/CMakeLists.txt
+@@ -150,6 +150,8 @@ if (NINTENDO_3DS)
+     # SDL's own main() wrapper is not used; Ui.cpp keeps its main() and the
+     # 3DS platform layer brings the console up itself.
+     target_compile_definitions(openrct2 PRIVATE SDL_MAIN_HANDLED)
++    # See __wrap_pthread_create in Platform.3DS.cpp: bigger stacks for std::thread.
++    target_link_options(openrct2 PRIVATE -Wl,--wrap=pthread_create)
+     ctr_generate_smdh("${CMAKE_BINARY_DIR}/openrct2.smdh"
+         NAME "OpenRCT2"
+         DESCRIPTION "Open-source re-implementation of RollerCoaster Tycoon 2"
+diff --git a/src/openrct2/platform/Platform.3DS.cpp b/src/openrct2/platform/Platform.3DS.cpp
+index 3552d8d..54a3080 100644
+--- a/src/openrct2/platform/Platform.3DS.cpp
++++ b/src/openrct2/platform/Platform.3DS.cpp
+@@ -27,6 +27,7 @@
+     #include "Platform.h"
+ 
+     #include <3ds.h>
++    #include <pthread.h>
+     #include <cstdio>
+     #include <cstdlib>
+     #include <cstring>
+@@ -41,6 +42,24 @@ u32 __stacksize__ = 2 * 1024 * 1024;
+ // Linear (GPU-visible) heap: only the screen framebuffers and audio buffers live here,
+ // so shrink it from libctru's 32 MiB default and leave the rest to the main heap.
+ u32 __ctru_linear_heap_size = 8 * 1024 * 1024;
++
++// libctru gives threads created without attributes (std::thread) a 32 KiB stack, which
++// OpenRCT2's worker threads (object scanning, JSON parsing) overflow. The executable is
++// linked with -Wl,--wrap=pthread_create so every such thread gets a larger one.
++int __real_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (*start)(void*), void* arg);
++int __wrap_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (*start)(void*), void* arg)
++{
++    if (attr != nullptr)
++    {
++        return __real_pthread_create(thread, attr, start, arg);
++    }
++    pthread_attr_t bigStack;
++    pthread_attr_init(&bigStack);
++    pthread_attr_setstacksize(&bigStack, 512 * 1024);
++    int rc = __real_pthread_create(thread, &bigStack, start, arg);
++    pthread_attr_destroy(&bigStack);
++    return rc;
++}
+ }
+ 
+ namespace OpenRCT2::Platform
+-- 
+2.43.0
+
+
+From 83821367bae8205e4f033e865966510e69b9ddd9 Mon Sep 17 00:00:00 2001
+From: Ryan3DSMods <349040779+Ryan3DSMods@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 20:31:18 +0000
+Subject: [PATCH 5/8] 3DS: size the heaps ourselves (96 MiB app-heap region
+ cap)
+
+libctru's automatic split put remaining-minus-linear (98.8 MiB) into the
+application heap, which exceeds the 96 MiB OS heap region and made
+svcControlMemory fail at startup. Override __system_allocateHeaps: fill
+the app heap up to the region cap, give the rest to the linear heap.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LZLN7FDQD6zdxCr63yFAou
+---
+ src/openrct2/platform/Platform.3DS.cpp | 55 +++++++++++++++++++++++---
+ 1 file changed, 50 insertions(+), 5 deletions(-)
+
+diff --git a/src/openrct2/platform/Platform.3DS.cpp b/src/openrct2/platform/Platform.3DS.cpp
+index 54a3080..e4121d9 100644
+--- a/src/openrct2/platform/Platform.3DS.cpp
++++ b/src/openrct2/platform/Platform.3DS.cpp
+@@ -39,9 +39,52 @@
+ extern "C" {
+ // Main thread stack: OpenRCT2 keeps sizeable buffers on the stack (paint, formatting, bidi).
+ u32 __stacksize__ = 2 * 1024 * 1024;
+-// Linear (GPU-visible) heap: only the screen framebuffers and audio buffers live here,
+-// so shrink it from libctru's 32 MiB default and leave the rest to the main heap.
+-u32 __ctru_linear_heap_size = 8 * 1024 * 1024;
++// Heap layout. libctru's default split (app heap capped at 24 MiB, linear heap at 32 MiB,
++// the rest to the app heap) is replaced so that malloc gets as much as possible: the app
++// heap region is limited to 96 MiB by the kernel's address space layout, so everything
++// up to that goes to the app heap and only the remainder (framebuffers, audio buffers)
++// to the GPU-visible linear heap.
++extern u32 __ctru_heap;
++extern u32 __ctru_linear_heap;
++extern u32 __ctru_heap_size;
++extern u32 __ctru_linear_heap_size;
++extern char* fake_heap_start;
++extern char* fake_heap_end;
++
++void __system_allocateHeaps(void)
++{
++    Handle reslimit = 0;
++    if (R_FAILED(svcGetResourceLimit(&reslimit, CUR_PROCESS_HANDLE)))
++        svcBreak(USERBREAK_PANIC);
++
++    s64 maxCommit = 0, currentCommit = 0;
++    ResourceLimitType reslimitType = RESLIMIT_COMMIT;
++    svcGetResourceLimitLimitValues(&maxCommit, reslimit, &reslimitType, 1);
++    svcGetResourceLimitCurrentValues(&currentCommit, reslimit, &reslimitType, 1);
++    svcCloseHandle(reslimit);
++
++    const u32 remaining = static_cast<u32>(maxCommit - currentCommit) & ~0xFFFu;
++    const u32 heapRegion = OS_HEAP_AREA_END - OS_HEAP_AREA_BEGIN; // 96 MiB
++    const u32 linearMinimum = 6 * 1024 * 1024;
++
++    u32 heapSize = remaining > linearMinimum ? remaining - linearMinimum : 0;
++    if (heapSize > heapRegion)
++        heapSize = heapRegion;
++    u32 linearSize = remaining - heapSize;
++
++    __ctru_heap_size = heapSize;
++    __ctru_linear_heap_size = linearSize;
++
++    if (R_FAILED(svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, heapSize, MEMOP_ALLOC, static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE))))
++        svcBreak(USERBREAK_PANIC);
++    if (R_FAILED(svcControlMemory(&__ctru_linear_heap, 0x0, 0x0, linearSize, MEMOP_ALLOC_LINEAR, static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE))))
++        svcBreak(USERBREAK_PANIC);
++
++    mappableInit(OS_MAP_AREA_BEGIN, OS_MAP_AREA_END);
++
++    fake_heap_start = reinterpret_cast<char*>(__ctru_heap);
++    fake_heap_end = fake_heap_start + heapSize;
++}
+ 
+ // libctru gives threads created without attributes (std::thread) a 32 KiB stack, which
+ // OpenRCT2's worker threads (object scanning, JSON parsing) overflow. The executable is
+@@ -90,8 +133,10 @@ namespace OpenRCT2::Platform
+         bool isNew3DS = false;
+         APT_CheckNew3DS(&isNew3DS);
+         std::printf(
+-            "OpenRCT2 for Nintendo 3DS (%s)\nApplication memory: %lu KiB free of %lu KiB\n",
+-            isNew3DS ? "New 3DS" : "Old 3DS", static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION) / 1024),
++            "OpenRCT2 for Nintendo 3DS (%s)\nheap %lu KiB, linear heap %lu KiB, app region free %lu of %lu KiB\n",
++            isNew3DS ? "New 3DS" : "Old 3DS", static_cast<unsigned long>(__ctru_heap_size / 1024),
++            static_cast<unsigned long>(__ctru_linear_heap_size / 1024),
++            static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION) / 1024),
+             static_cast<unsigned long>(osGetMemRegionSize(MEMREGION_APPLICATION) / 1024));
+     }
+ 
+-- 
+2.43.0
+
+
+From ed64e02a11f7287e5d12e9d93190ba0c30ba6c4a Mon Sep 17 00:00:00 2001
+From: Ryan3DSMods <349040779+Ryan3DSMods@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 20:59:07 +0000
+Subject: [PATCH 6/8] 3DS: POSIX file scanner, ResolveCasing semantics,
+ readable exits, progress output
+
+- FileScanner: use the dirent/stat scanner on the 3DS (the function compiled
+  to a trap with no platform branch matching).
+- Platform.3DS: ResolveCasing returns empty for missing files like the other
+  platforms; terminate/abort/exit hooks print the reason and wait for START;
+  print the RCT2 lookup result.
+- Context: print loading phases and a progress counter on the 3DS console.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LZLN7FDQD6zdxCr63yFAou
+---
+ src/openrct2/Context.cpp               | 21 +++++++-
+ src/openrct2/core/FileScanner.cpp      |  6 +--
+ src/openrct2/platform/Platform.3DS.cpp | 72 +++++++++++++++++++++++++-
+ 3 files changed, 93 insertions(+), 6 deletions(-)
+
+diff --git a/src/openrct2/Context.cpp b/src/openrct2/Context.cpp
+index 448b4c9..25b4db7 100644
+--- a/src/openrct2/Context.cpp
++++ b/src/openrct2/Context.cpp
+@@ -8,7 +8,8 @@
+  *****************************************************************************/
+ 
+ #ifdef __EMSCRIPTEN__
+-    #include <cassert>
++    #include <cstdio>
++#include <cassert>
+     #include <emscripten.h>
+ #endif // __EMSCRIPTEN__
+ 
+@@ -456,17 +457,21 @@ namespace OpenRCT2
+ 
+             if (!gOpenRCT2Headless)
+             {
++                LOG_INFO("Creating window...");
+                 _uiContext->CreateWindow();
++                LOG_INFO("Window created.");
+             }
+ 
+             EnsureUserContentDirectoriesExist();
+ 
+             if (!gOpenRCT2Headless)
+             {
++                LOG_INFO("Initialising audio...");
+                 Audio::Init();
+                 Audio::PopulateDevices();
+                 Audio::InitRideSoundsAndInfo();
+                 Audio::gGameSoundsOff = !Config::Get().sound.masterSoundEnabled;
++                LOG_INFO("Audio initialised.");
+             }
+ 
+             auto intent = Intent(INTENT_ACTION_INIT_CHAT);
+@@ -644,6 +649,9 @@ namespace OpenRCT2
+         void OpenProgress(StringId captionStringId) override
+         {
+             auto captionString = _localisationService->GetString(captionStringId);
++#ifdef __3DS__
++            std::printf("%s\n", captionString);
++#endif
+             auto intent = Intent(INTENT_ACTION_PROGRESS_OPEN);
+             intent.PutExtra(INTENT_EXTRA_MESSAGE, captionString);
+             ContextOpenIntent(&intent);
+@@ -655,6 +663,17 @@ namespace OpenRCT2
+                 return;
+ 
+             _forcedUpdateTimer.Restart();
++#ifdef __3DS__
++            {
++                static uint32_t lastPrintTicks = 0;
++                auto ticks = Platform::GetTicks();
++                if (ticks - lastPrintTicks > 2000 || currentProgress + 1 >= totalCount)
++                {
++                    lastPrintTicks = ticks;
++                    std::printf("  %u / %u\n", static_cast<unsigned>(currentProgress), static_cast<unsigned>(totalCount));
++                }
++            }
++#endif
+ 
+             auto intent = Intent(INTENT_ACTION_PROGRESS_SET);
+             intent.PutExtra(INTENT_EXTRA_PROGRESS_OFFSET, currentProgress);
+diff --git a/src/openrct2/core/FileScanner.cpp b/src/openrct2/core/FileScanner.cpp
+index 4532dc9..3f3ad16 100644
+--- a/src/openrct2/core/FileScanner.cpp
++++ b/src/openrct2/core/FileScanner.cpp
+@@ -12,7 +12,7 @@
+         #define WIN32_LEAN_AND_MEAN
+     #endif
+     #include <windows.h>
+-#elif defined(__unix__) || defined(__HAIKU__) || (defined(__APPLE__) && defined(__MACH__)) || defined(__ANDROID__)
++#elif defined(__unix__) || defined(__HAIKU__) || (defined(__APPLE__) && defined(__MACH__)) || defined(__ANDROID__) || defined(__3DS__)
+     #include <dirent.h>
+     #include <sys/stat.h>
+ #endif
+@@ -307,7 +307,7 @@ public:
+ };
+ #endif // __ANDROID__
+ 
+-#if defined(__unix__) || defined(__HAIKU__) || (defined(__APPLE__) && defined(__MACH__))
++#if defined(__unix__) || defined(__HAIKU__) || (defined(__APPLE__) && defined(__MACH__)) || defined(__3DS__)
+ 
+ class FileScannerUnix final : public FileScannerBase
+ {
+@@ -392,7 +392,7 @@ std::unique_ptr<IFileScanner> Path::scanDirectory(const std::string& pattern, bo
+ #endif
+ #ifdef _WIN32
+     return std::make_unique<FileScannerWindows>(pattern, recurse);
+-#elif defined(__unix__) || defined(__HAIKU__) || (defined(__APPLE__) && defined(__MACH__))
++#elif defined(__unix__) || defined(__HAIKU__) || (defined(__APPLE__) && defined(__MACH__)) || defined(__3DS__)
+     return std::make_unique<FileScannerUnix>(pattern, recurse);
+ #endif
+ }
+diff --git a/src/openrct2/platform/Platform.3DS.cpp b/src/openrct2/platform/Platform.3DS.cpp
+index e4121d9..88b732f 100644
+--- a/src/openrct2/platform/Platform.3DS.cpp
++++ b/src/openrct2/platform/Platform.3DS.cpp
+@@ -28,8 +28,11 @@
+ 
+     #include <3ds.h>
+     #include <pthread.h>
++    #include <csignal>
+     #include <cstdio>
+     #include <cstdlib>
++    #include <exception>
++    #include <unistd.h>
+     #include <cstring>
+     #include <ctime>
+     #include <sys/stat.h>
+@@ -116,9 +119,61 @@ namespace OpenRCT2::Platform
+     static bool _cfguReady = false;
+     static bool _romfsReady = false;
+ 
++    static void WaitForStart()
++    {
++        std::printf("Press START to return to the Homebrew Launcher.\n");
++        while (aptMainLoop())
++        {
++            hidScanInput();
++            if (hidKeysDown() & KEY_START)
++                break;
++            gspWaitForVBlank();
++        }
++    }
++
++    // Any way the process can end short of returning from main() is routed through here so
++    // the message is readable on the top screen before the Homebrew Launcher takes over.
++    static void OnTerminate()
++    {
++        std::printf("\n*** std::terminate ***\n");
++        if (auto current = std::current_exception())
++        {
++            try
++            {
++                std::rethrow_exception(current);
++            }
++            catch (const std::exception& e)
++            {
++                std::printf("uncaught exception: %s\n", e.what());
++            }
++            catch (...)
++            {
++                std::printf("uncaught exception of unknown type\n");
++            }
++        }
++        WaitForStart();
++        _exit(134);
++    }
++
++    static void OnAbortSignal(int)
++    {
++        std::printf("\n*** abort() ***\n");
++        WaitForStart();
++        _exit(134);
++    }
++
++    static void OnExit()
++    {
++        std::printf("\n*** exit() called ***\n");
++        WaitForStart();
++    }
++
+     // Called from main() before anything else on the console.
+     void N3DSPlatformInit()
+     {
++        std::set_terminate(OnTerminate);
++        std::signal(SIGABRT, OnAbortSignal);
++        std::atexit(OnExit);
+         // New 3DS: 804 MHz + L2 cache. No-op on an original 3DS.
+         osSetSpeedupEnable(true);
+         _romfsReady = R_SUCCEEDED(romfsInit());
+@@ -142,6 +197,9 @@ namespace OpenRCT2::Platform
+ 
+     void N3DSPlatformExit()
+     {
++        // Keep the top-screen log readable until the user dismisses it.
++        std::printf("\nOpenRCT2 has exited normally.\n");
++        WaitForStart();
+         if (_cfguReady)
+             cfguExit();
+         if (_romfsReady)
+@@ -219,8 +277,15 @@ namespace OpenRCT2::Platform
+ 
+     std::string ResolveCasing(std::string_view path, bool fileExists)
+     {
+-        // Case-insensitive file system: whatever casing was asked for will do.
+-        return std::string(path);
++        // The SD card (FAT32) is case-insensitive, so if the file exists the requested casing is
++        // fine as it is. An empty result means "not present": callers rely on that to try other
++        // locations (e.g. the Steam RCT1 Deluxe layout under RCTdeluxe_install/).
++        std::string result;
++        if (fileExists)
++        {
++            result = std::string(path);
++        }
++        return result;
+     }
+ 
+     std::string FormatShortDate(std::time_t timestamp)
+@@ -432,6 +497,9 @@ namespace OpenRCT2::Platform
+ 
+     std::vector<std::string> GetSearchablePathsRCT2()
+     {
++        struct stat st{};
++        bool hasG1 = stat("sdmc:/3ds/openrct2/rct2/Data/g1.dat", &st) == 0;
++        std::printf("Looking for RCT2 in %s: Data/g1.dat %s\n", kRct2Path, hasG1 ? "found" : "NOT found");
+         return { kRct2Path };
+     }
+ 
+-- 
+2.43.0
+
+
+From 8e731d31ab8cf7b1f16807bdeadb61f722cf979f Mon Sep 17 00:00:00 2001
+From: Ryan3DSMods <349040779+Ryan3DSMods@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 21:21:41 +0000
+Subject: [PATCH 7/8] 3DS: serve large allocations from the linear heap; skip
+ RCT1 graphics; memory logging
+
+- Memory.3DS.cpp: global operator new/delete and Memory::Allocate route blocks
+  >= 256 KiB to the linear heap (the malloc heap is limited to a 96 MiB
+  address range), freeing by address range; malloc as fallback either way.
+- Skip csg1.dat (41 MiB) on the 3DS for now.
+- N3DSLogMemory prints malloc and linear heap usage at loading stages.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LZLN7FDQD6zdxCr63yFAou
+---
+ src/openrct2/Context.cpp               |   8 ++
+ src/openrct2/core/Memory.hpp           |  28 +++-
+ src/openrct2/platform/Memory.3DS.cpp   | 181 +++++++++++++++++++++++++
+ src/openrct2/platform/Platform.3DS.cpp |  14 ++
+ src/openrct2/platform/Platform.h       |   2 +
+ 5 files changed, 228 insertions(+), 5 deletions(-)
+ create mode 100644 src/openrct2/platform/Memory.3DS.cpp
+
+diff --git a/src/openrct2/Context.cpp b/src/openrct2/Context.cpp
+index 25b4db7..c9f02f2 100644
+--- a/src/openrct2/Context.cpp
++++ b/src/openrct2/Context.cpp
+@@ -489,6 +489,9 @@ namespace OpenRCT2
+ 
+             ContextInit();
+             ResetSubsystems();
++#ifdef __3DS__
++            Platform::N3DSLogMemory("after subsystems reset");
++#endif
+ 
+             if (!gOpenRCT2Headless)
+             {
+@@ -1022,7 +1025,12 @@ namespace OpenRCT2
+                 return false;
+             }
+             GfxLoadG2PalettesFontsTracks();
++#ifdef __3DS__
++            // RCT1's csg1.dat is 41 MiB loaded whole into RAM: not affordable on the console yet.
++            Platform::N3DSLogMemory("after g1/g2");
++#else
+             GfxLoadCsg();
++#endif
+             FontSpriteInitialiseCharacters();
+             return true;
+         }
+diff --git a/src/openrct2/core/Memory.hpp b/src/openrct2/core/Memory.hpp
+index 7accb81..a326b58 100644
+--- a/src/openrct2/core/Memory.hpp
++++ b/src/openrct2/core/Memory.hpp
+@@ -15,6 +15,24 @@
+ #include <cstring>
+ #include <typeinfo>
+ 
++#ifdef __3DS__
++// See platform/Memory.3DS.cpp: large blocks live in the console's linear heap.
++namespace OpenRCT2::N3DSMemory
++{
++    void* Alloc(size_t size);
++    void* Realloc(void* ptr, size_t size);
++    void Free(void* ptr);
++    size_t LinearFree();
++} // namespace OpenRCT2::N3DSMemory
++    #define OPENRCT2_MALLOC(size) ::OpenRCT2::N3DSMemory::Alloc(size)
++    #define OPENRCT2_REALLOC(ptr, size) ::OpenRCT2::N3DSMemory::Realloc(ptr, size)
++    #define OPENRCT2_FREE(ptr) ::OpenRCT2::N3DSMemory::Free(ptr)
++#else
++    #define OPENRCT2_MALLOC(size) malloc(size)
++    #define OPENRCT2_REALLOC(ptr, size) realloc(ptr, size)
++    #define OPENRCT2_FREE(ptr) free(ptr)
++#endif
++
+ /**
+  * Utility methods for memory management. Typically helpers and wrappers around the C standard library.
+  */
+@@ -23,7 +41,7 @@ namespace OpenRCT2::Memory
+     template<typename T>
+     static T* Allocate()
+     {
+-        T* result = static_cast<T*>(malloc(sizeof(T)));
++        T* result = static_cast<T*>(OPENRCT2_MALLOC(sizeof(T)));
+         Guard::ArgumentNotNull(result, "Failed to allocate %zu bytes for %s", sizeof(T), typeid(T).name());
+         return result;
+     }
+@@ -31,7 +49,7 @@ namespace OpenRCT2::Memory
+     template<typename T>
+     static T* Allocate(size_t size)
+     {
+-        T* result = static_cast<T*>(malloc(size));
++        T* result = static_cast<T*>(OPENRCT2_MALLOC(size));
+         Guard::ArgumentNotNull(result, "Failed to allocate %zu bytes for %s", size, typeid(T).name());
+         return result;
+     }
+@@ -42,11 +60,11 @@ namespace OpenRCT2::Memory
+         T* result;
+         if (ptr == nullptr)
+         {
+-            result = static_cast<T*>(malloc(size));
++            result = static_cast<T*>(OPENRCT2_MALLOC(size));
+         }
+         else
+         {
+-            result = static_cast<T*>(realloc(reinterpret_cast<void*>(ptr), size));
++            result = static_cast<T*>(OPENRCT2_REALLOC(reinterpret_cast<void*>(ptr), size));
+         }
+         Guard::ArgumentNotNull(result, "Failed to reallocate %x (%s) to have %zu bytes", ptr, typeid(T).name(), size);
+         return result;
+@@ -55,7 +73,7 @@ namespace OpenRCT2::Memory
+     template<typename T>
+     static void Free(T* ptr)
+     {
+-        free(const_cast<void*>(reinterpret_cast<const void*>(ptr)));
++        OPENRCT2_FREE(const_cast<void*>(reinterpret_cast<const void*>(ptr)));
+     }
+ 
+ } // namespace OpenRCT2::Memory
+diff --git a/src/openrct2/platform/Memory.3DS.cpp b/src/openrct2/platform/Memory.3DS.cpp
+new file mode 100644
+index 0000000..6eac4c9
+--- /dev/null
++++ b/src/openrct2/platform/Memory.3DS.cpp
+@@ -0,0 +1,181 @@
++/*****************************************************************************
++ * Copyright (c) 2014-2026 OpenRCT2 developers
++ *
++ * For a complete list of all authors, please refer to contributors.md
++ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
++ *
++ * OpenRCT2 is licensed under the GNU General Public License version 3.
++ *****************************************************************************/
++
++// Nintendo 3DS memory routing.
++//
++// The kernel limits the ordinary (malloc) heap to a 96 MiB address range, while the rest of
++// the application's memory is only reachable through the "linear" heap. OpenRCT2 keeps several
++// very large blocks alive for the whole session (the entity table, the tile element array,
++// g1.dat, object images), so large C++ allocations are served from the linear heap and only
++// small ones from malloc. Frees are routed by address range.
++
++#ifdef __3DS__
++
++    #include "../core/Memory.hpp"
++
++    #include <3ds.h>
++    #include <algorithm>
++    #include <cstdint>
++    #include <cstdlib>
++    #include <cstring>
++    #include <malloc.h>
++    #include <new>
++
++extern "C" {
++extern u32 __ctru_linear_heap;
++extern u32 __ctru_linear_heap_size;
++}
++
++namespace OpenRCT2::N3DSMemory
++{
++    static constexpr size_t kLinearThreshold = 256 * 1024;
++
++    static LightLock _lock;
++    static bool _lockInitialised = false;
++
++    static void Lock()
++    {
++        if (!_lockInitialised)
++        {
++            LightLock_Init(&_lock);
++            _lockInitialised = true;
++        }
++        LightLock_Lock(&_lock);
++    }
++
++    static void Unlock()
++    {
++        LightLock_Unlock(&_lock);
++    }
++
++    static bool IsLinear(const void* ptr)
++    {
++        auto address = reinterpret_cast<uintptr_t>(ptr);
++        return address >= __ctru_linear_heap && address < __ctru_linear_heap + __ctru_linear_heap_size;
++    }
++
++    static void* LinearAlloc(size_t size)
++    {
++        Lock();
++        void* result = linearAlloc(size);
++        Unlock();
++        return result;
++    }
++
++    static void LinearFree(void* ptr)
++    {
++        Lock();
++        linearFree(ptr);
++        Unlock();
++    }
++
++    void* Alloc(size_t size)
++    {
++        if (size >= kLinearThreshold)
++        {
++            if (void* result = LinearAlloc(size))
++                return result;
++        }
++        if (void* result = std::malloc(size))
++            return result;
++        // malloc heap exhausted: the linear heap is the last resort for small blocks too.
++        return LinearAlloc(size);
++    }
++
++    void Free(void* ptr)
++    {
++        if (ptr == nullptr)
++            return;
++        if (IsLinear(ptr))
++            LinearFree(ptr);
++        else
++            std::free(ptr);
++    }
++
++    void* Realloc(void* ptr, size_t size)
++    {
++        if (ptr == nullptr)
++            return Alloc(size);
++        if (!IsLinear(ptr) && size < kLinearThreshold)
++            return std::realloc(ptr, size);
++
++        size_t oldSize = IsLinear(ptr) ? linearGetSize(ptr) : malloc_usable_size(ptr);
++        void* result = Alloc(size);
++        if (result == nullptr)
++            return nullptr;
++        std::memcpy(result, ptr, std::min(oldSize, size));
++        Free(ptr);
++        return result;
++    }
++
++    size_t LinearFree()
++    {
++        return linearSpaceFree();
++    }
++} // namespace OpenRCT2::N3DSMemory
++
++using namespace OpenRCT2;
++
++void* operator new(std::size_t size)
++{
++    void* result = N3DSMemory::Alloc(size != 0 ? size : 1);
++    if (result == nullptr)
++        throw std::bad_alloc();
++    return result;
++}
++
++void* operator new[](std::size_t size)
++{
++    void* result = N3DSMemory::Alloc(size != 0 ? size : 1);
++    if (result == nullptr)
++        throw std::bad_alloc();
++    return result;
++}
++
++void* operator new(std::size_t size, const std::nothrow_t&) noexcept
++{
++    return N3DSMemory::Alloc(size != 0 ? size : 1);
++}
++
++void* operator new[](std::size_t size, const std::nothrow_t&) noexcept
++{
++    return N3DSMemory::Alloc(size != 0 ? size : 1);
++}
++
++void operator delete(void* ptr) noexcept
++{
++    N3DSMemory::Free(ptr);
++}
++
++void operator delete[](void* ptr) noexcept
++{
++    N3DSMemory::Free(ptr);
++}
++
++void operator delete(void* ptr, std::size_t) noexcept
++{
++    N3DSMemory::Free(ptr);
++}
++
++void operator delete[](void* ptr, std::size_t) noexcept
++{
++    N3DSMemory::Free(ptr);
++}
++
++void operator delete(void* ptr, const std::nothrow_t&) noexcept
++{
++    N3DSMemory::Free(ptr);
++}
++
++void operator delete[](void* ptr, const std::nothrow_t&) noexcept
++{
++    N3DSMemory::Free(ptr);
++}
++
++#endif // __3DS__
+diff --git a/src/openrct2/platform/Platform.3DS.cpp b/src/openrct2/platform/Platform.3DS.cpp
+index 88b732f..953a95a 100644
+--- a/src/openrct2/platform/Platform.3DS.cpp
++++ b/src/openrct2/platform/Platform.3DS.cpp
+@@ -29,6 +29,7 @@
+     #include <3ds.h>
+     #include <pthread.h>
+     #include <csignal>
++    #include <malloc.h>
+     #include <cstdio>
+     #include <cstdlib>
+     #include <exception>
+@@ -119,6 +120,8 @@ namespace OpenRCT2::Platform
+     static bool _cfguReady = false;
+     static bool _romfsReady = false;
+ 
++    void N3DSLogMemory(const char* tag);
++
+     static void WaitForStart()
+     {
+         std::printf("Press START to return to the Homebrew Launcher.\n");
+@@ -136,6 +139,7 @@ namespace OpenRCT2::Platform
+     static void OnTerminate()
+     {
+         std::printf("\n*** std::terminate ***\n");
++        N3DSLogMemory("at terminate");
+         if (auto current = std::current_exception())
+         {
+             try
+@@ -195,6 +199,16 @@ namespace OpenRCT2::Platform
+             static_cast<unsigned long>(osGetMemRegionSize(MEMREGION_APPLICATION) / 1024));
+     }
+ 
++    void N3DSLogMemory(const char* tag)
++    {
++        struct mallinfo mi = mallinfo();
++        std::printf(
++            "[mem] %s: heap used %lu KiB, free %lu KiB (of %lu KiB); linear free %lu KiB (of %lu KiB)\n", tag,
++            static_cast<unsigned long>(mi.uordblks / 1024), static_cast<unsigned long>((__ctru_heap_size - mi.uordblks) / 1024),
++            static_cast<unsigned long>(__ctru_heap_size / 1024), static_cast<unsigned long>(linearSpaceFree() / 1024),
++            static_cast<unsigned long>(__ctru_linear_heap_size / 1024));
++    }
++
+     void N3DSPlatformExit()
+     {
+         // Keep the top-screen log readable until the user dismisses it.
+diff --git a/src/openrct2/platform/Platform.h b/src/openrct2/platform/Platform.h
+index 2c7178e..95fecc3 100644
+--- a/src/openrct2/platform/Platform.h
++++ b/src/openrct2/platform/Platform.h
+@@ -216,6 +216,8 @@ namespace OpenRCT2::Platform
+     void N3DSPlatformExit();
+     // Turn the top screen into a text console (stdout). Call after SDL's video init.
+     void N3DSConsoleInit();
++    // Print heap usage on the console, prefixed with a tag.
++    void N3DSLogMemory(const char* tag);
+ #endif
+ 
+     bool IsRunningInWine();
+-- 
+2.43.0
+
+
+From f051555fb52bdcdcb0ad3216a404b52e5b558b83 Mon Sep 17 00:00:00 2001
+From: Ryan3DSMods <349040779+Ryan3DSMods@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 21:37:46 +0000
+Subject: [PATCH 8/8] 3DS: cap map size (302) and entities (16384); tee the
+ console to a log file on the SD card
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LZLN7FDQD6zdxCr63yFAou
+---
+ src/openrct2/entity/EntityRegistry.h   |  6 ++++++
+ src/openrct2/platform/Platform.3DS.cpp | 26 ++++++++++++++++++++++++++
+ src/openrct2/world/MapLimits.h         |  6 ++++++
+ 3 files changed, 38 insertions(+)
+
+diff --git a/src/openrct2/entity/EntityRegistry.h b/src/openrct2/entity/EntityRegistry.h
+index ae19845..3abb9dd 100644
+--- a/src/openrct2/entity/EntityRegistry.h
++++ b/src/openrct2/entity/EntityRegistry.h
+@@ -22,7 +22,13 @@ struct CoordsXY;
+ 
+ namespace OpenRCT2
+ {
++#ifdef __3DS__
++    // 512 bytes per slot: 65535 slots would be 32 MiB. Parks with more entities than this
++    // are beyond what the console can simulate anyway.
++    constexpr uint16_t kMaxEntities = 16384;
++#else
+     constexpr uint16_t kMaxEntities = 65535;
++#endif
+     constexpr uint16_t kMaxMiscEntities = 6400;
+ 
+     constexpr const uint32_t kSpatialIndexSize = (kMaximumMapSizeTechnical * kMaximumMapSizeTechnical) + 1;
+diff --git a/src/openrct2/platform/Platform.3DS.cpp b/src/openrct2/platform/Platform.3DS.cpp
+index 953a95a..c91515e 100644
+--- a/src/openrct2/platform/Platform.3DS.cpp
++++ b/src/openrct2/platform/Platform.3DS.cpp
+@@ -36,6 +36,7 @@
+     #include <unistd.h>
+     #include <cstring>
+     #include <ctime>
++    #include <sys/iosupport.h>
+     #include <sys/stat.h>
+     #include <sys/time.h>
+ 
+@@ -186,9 +187,34 @@ namespace OpenRCT2::Platform
+         mkdir(kUserRoot, 0777);
+     }
+ 
++    // Everything printed to the top-screen console is also appended to a log file on the SD
++    // card, so a run can be reported without photographing the screen.
++    static const devoptab_t* _consoleDevoptab = nullptr;
++    static devoptab_t _teeDevoptab;
++    static FILE* _logFile = nullptr;
++
++    static ssize_t TeeWrite(struct _reent* r, void* fd, const char* ptr, size_t len)
++    {
++        if (_logFile != nullptr)
++        {
++            std::fwrite(ptr, 1, len, _logFile);
++            std::fflush(_logFile);
++        }
++        return _consoleDevoptab->write_r(r, fd, ptr, len);
++    }
++
+     void N3DSConsoleInit()
+     {
+         consoleInit(GFX_TOP, nullptr);
++        _logFile = std::fopen("sdmc:/3ds/openrct2/openrct2.log", "w");
++        _consoleDevoptab = devoptab_list[STD_OUT];
++        _teeDevoptab = *_consoleDevoptab;
++        _teeDevoptab.name = "tee";
++        _teeDevoptab.write_r = TeeWrite;
++        devoptab_list[STD_OUT] = &_teeDevoptab;
++        devoptab_list[STD_ERR] = &_teeDevoptab;
++        std::setvbuf(stdout, nullptr, _IONBF, 0);
++        std::setvbuf(stderr, nullptr, _IONBF, 0);
+         bool isNew3DS = false;
+         APT_CheckNew3DS(&isNew3DS);
+         std::printf(
+diff --git a/src/openrct2/world/MapLimits.h b/src/openrct2/world/MapLimits.h
+index fc7e362..d3adb98 100644
+--- a/src/openrct2/world/MapLimits.h
++++ b/src/openrct2/world/MapLimits.h
+@@ -17,7 +17,13 @@ constexpr int32_t kCoordsZStep = 8;
+ constexpr int32_t kCoordsZPerTinyZ = 16;
+ 
+ constexpr uint8_t kMinimumMapSizeTechnical = 5;
++#ifdef __3DS__
++// The console cannot afford the per-tile tables of a 999x999 map (tile elements, tile
++// index, entity spatial index, animation flags: ~33 MiB). RCT2's own maximum is 256x256.
++constexpr uint16_t kMaximumMapSizeTechnical = 302;
++#else
+ constexpr uint16_t kMaximumMapSizeTechnical = 1001;
++#endif
+ constexpr int16_t kMinimumMapSizePractical = (kMinimumMapSizeTechnical - 2);
+ constexpr int16_t kMaximumMapSizePractical = (kMaximumMapSizeTechnical - 2);
+ constexpr int32_t kMaximumMapSizeBig = kCoordsXYStep * kMaximumMapSizeTechnical;
+-- 
+2.43.0
+
