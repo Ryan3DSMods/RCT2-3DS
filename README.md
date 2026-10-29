@@ -117,6 +117,7 @@ The one thing this port does differently that's worth a mention: the game render
 
 ## Credits
 
+- 3DS port by **Ryan**: [YouTube](https://www.youtube.com/@Ryan3DSMods) · [TikTok](https://www.tiktok.com/@ryan3dsmods)
 - [OpenRCT2](https://github.com/OpenRCT2/OpenRCT2) and its contributors — the engine this port is built on (v0.5.6).
 - [devkitPro](https://devkitpro.org/) (devkitARM, libctru, citro3d), [SDL2](https://libsdl.org/) and [libzip](https://libzip.org/).
 - [Azahar](https://github.com/azahar-emu/azahar) — the emulator used for automated testing.
