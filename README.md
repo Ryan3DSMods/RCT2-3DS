@@ -1,6 +1,8 @@
-# RTC2-3DS — OpenRCT2 on the New Nintendo 3DS
+# RCT2-3DS — OpenRCT2 on the New Nintendo 3DS
 
 Play **RollerCoaster Tycoon 2** (and RCT1 scenarios) on your New 3DS, built on the open-source OpenRCT2 engine, with the park on the top screen and all the building on the touch screen.
+
+Made by Ryan3DSMods — follow the port and other 3DS projects on [TikTok @ryan3dsmods](https://www.tiktok.com/@ryan3dsmods).
 
 > This is an unofficial homebrew port of [OpenRCT2](https://github.com/OpenRCT2/OpenRCT2). It contains no game files: you need your own copy of RollerCoaster Tycoon 2 (Steam or GOG). It needs a **New** 3DS / New 2DS with custom firmware (Luma3DS); an original 3DS does not have enough memory.
 
